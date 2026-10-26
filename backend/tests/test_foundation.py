@@ -14,7 +14,7 @@ def connected(tmp_path, monkeypatch):
     store = Store(tmp_path / 'test.sqlite')
     monkeypatch.setattr(application, 'db', store)
     monkeypatch.setattr(security, 'db', store)
-    for name in ['production','media','exports','adapters','routes_production','director','routes_director','routes_editing','editing_export','bundles']:
+    for name in ['production','media','exports','adapters','routes_production','director','routes_director','routes_editing','editing_export','bundles','quality','diagnostics']:
         module=importlib.import_module('studio.'+name)
         monkeypatch.setattr(module,'db',store)
     importlib.import_module('studio.production').migrate()
@@ -98,3 +98,61 @@ def test_event_tickets_require_authentication(connected):
     client, headers, _ = connected
     assert client.post('/api/events/ticket').status_code == 401
     assert len(client.post('/api/events/ticket', headers=headers).json()['ticket']) > 20
+
+
+def test_media_ranges_are_scoped_and_revoked(connected):
+    import io
+    from PIL import Image
+    client,headers,store=connected
+    p=client.post('/api/projects',json={'title':'Media security'},headers=headers).json()
+    s=client.post(f"/api/projects/{p['id']}/scenes",json={'title':'A'},headers=headers).json()
+    image=io.BytesIO();Image.new('RGB',(64,64),'red').save(image,format='PNG')
+    assets=[]
+    for _ in range(2):assets.append(client.post('/api/scenes/'+s['id']+'/import',files={'file':('still.png',image.getvalue(),'image/png')},headers=headers).json()['asset_id'])
+    ticket=client.post('/api/assets/'+assets[0]+'/ticket',headers=headers).json()['url']
+    response=client.get(ticket,headers={'Origin':headers['Origin'],'Range':'bytes=0-15'})
+    assert response.status_code==206 and len(response.content)==16
+    assert response.headers['content-range'].startswith('bytes 0-15/')
+    assert client.get(ticket.replace(assets[0],assets[1]),headers={'Origin':headers['Origin']}).status_code==401
+    client.post('/api/session/revoke',headers=headers)
+    assert client.get(ticket,headers={'Origin':headers['Origin']}).status_code==403
+
+
+def test_existing_websocket_closes_after_session_revocation(connected):
+    from starlette.websockets import WebSocketDisconnect
+    client,headers,store=connected
+    value=client.post('/api/events/ticket',headers=headers).json()['ticket']
+    with client.websocket_connect('ws://127.0.0.1:8770/ws?ticket='+value,headers={'Origin':headers['Origin']}) as socket:
+        socket.receive_json()
+        client.post('/api/session/revoke',headers=headers)
+        with pytest.raises(WebSocketDisconnect):
+            for _ in range(10):socket.receive_json()
+
+
+def test_invalid_project_settings_are_rejected_before_commit(connected):
+    client,headers,store=connected
+    p=client.post('/api/projects',json={'title':'Validation'},headers=headers).json()
+    for setting in [{'candidates':1000},{'qa_threshold':-1},{'max_retries':100},{'gates':{'unknown':True}}]:
+        response=client.patch('/api/projects/'+p['id'],json={'revision':1,'settings':setting},headers=headers)
+        assert response.status_code==422
+        assert store.project(p['id'])['revision']==1
+
+
+@pytest.mark.parametrize('owns_prompt',[True,False])
+def test_targeted_cancel_never_interrupts_a_foreign_prompt(connected,monkeypatch,owns_prompt):
+    import httpx,json
+    from studio.store import uid
+    client,headers,store=connected
+    p=store.create_project('Cancel scope');s=store.add_scene(p['id'],'A');identifier=uid();prompt=uid()
+    store.execute('INSERT INTO jobs(id,project_id,scene_id,kind,status,snapshot,dependencies,comfy_prompt_id) VALUES(?,?,?,?,?,?,?,?)',(identifier,p['id'],s['id'],'video','submitted','{}','[]',prompt))
+    calls=[]
+    def handler(request):
+        calls.append((request.method,request.url.path))
+        if request.method=='GET':return httpx.Response(200,json={'queue_running':[[0,prompt,{}, {'sceneflow':{'job_id':identifier if owns_prompt else 'foreign'}}]],'queue_pending':[]})
+        return httpx.Response(200,json={'cancelled':True})
+    factory=httpx.AsyncClient
+    monkeypatch.setattr(httpx,'AsyncClient',lambda **kwargs:factory(transport=httpx.MockTransport(handler),**kwargs))
+    response=client.post('/api/jobs/'+identifier+'/cancel',headers=headers)
+    assert response.status_code==(200 if owns_prompt else 409)
+    assert calls==[('GET','/queue')]+([('POST','/api/jobs/'+prompt+'/cancel')] if owns_prompt else [])
+    assert store.one('SELECT cancel_requested FROM jobs WHERE id=?',(identifier,))['cancel_requested']==int(owns_prompt)

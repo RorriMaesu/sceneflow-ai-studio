@@ -1,4 +1,5 @@
 import json
+import httpx
 from pathlib import Path
 
 from fastapi import APIRouter,Depends,HTTPException,Request,UploadFile
@@ -6,12 +7,12 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel,Field
 
 from .adapters import registry
-from .config import ROOT
+from .config import ROOT,settings
 from .exports import queue_export,rebuild_timeline,save_timeline
 from .media import add_asset,asset_path,select_asset
 from .production import ACTIVE,approve_and_continue,pause,produce,queue_snapshot,state,supersede_pending,update_job
 from .security import require_session,ticket,verify_ticket
-from .store import db,now,uid
+from .store import db,encode,now,uid
 
 router=APIRouter(prefix='/api')
 
@@ -38,7 +39,12 @@ async def discover(session=Depends(require_session)):
 async def production(identifier:str,body:ProductionInput,session=Depends(require_session)):
     if not registry.list():
         await registry.discover()
-    return produce(identifier,body.scope,body.scene_id)
+    from .production import Dispatcher
+    dispatcher=Dispatcher()
+    if body.scope=='all':await dispatcher.reuse_completed(identifier)
+    result=produce(identifier,body.scope,body.scene_id)
+    if body.scope=='all':await dispatcher.maybe_export(identifier)
+    return result
 
 
 @router.post('/projects/{identifier}/pause')
@@ -69,10 +75,26 @@ async def cancel(identifier:str,session=Depends(require_session)):
     job=db.one('SELECT * FROM jobs WHERE id=?',(identifier,))
     if not job:
         raise KeyError('Job not found')
-    if job['status']!='queued':
-        raise HTTPException(409,'This action removes pending work only. An active render keeps its immutable inputs.')
-    update_job(identifier,'cancelled',finished=now())
-    return {'cancelled':True}
+    if job['status'] in ['queued','awaiting_review']:
+        update_job(identifier,'cancelled',finished=now())
+        return {'cancelled':True}
+    if job['status'] not in ACTIVE or job['kind'] not in ['image','video'] or not job['comfy_prompt_id']:
+        raise HTTPException(409,'This job cannot be cancelled from its current state.')
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response=await client.get(settings['comfy_url']+'/queue');response.raise_for_status();queue=response.json()
+            owned=any(item[1]==job['comfy_prompt_id'] and len(item)>3 and item[3].get('sceneflow',{}).get('job_id')==identifier for item in queue.get('queue_running',[])+queue.get('queue_pending',[]))
+            if not owned:raise HTTPException(409,'No matching active Studio-owned prompt was found. Refresh its state before cancelling.')
+            db.execute('UPDATE jobs SET cancel_requested=1 WHERE id=?',(identifier,))
+            # This backend endpoint atomically targets one exact prompt. Never use global interrupt.
+            response=await client.post(settings['comfy_url']+'/api/jobs/'+job['comfy_prompt_id']+'/cancel');response.raise_for_status()
+            if not response.json().get('cancelled'):
+                db.execute('UPDATE jobs SET cancel_requested=0 WHERE id=?',(identifier,))
+                return {'cancelled':False,'detail':'The job finished before cancellation.'}
+            db.execute('UPDATE jobs SET error=? WHERE id=?',('Cancellation requested for this Studio-owned prompt.',identifier))
+            return {'cancelled':True}
+    except httpx.HTTPError:
+        raise HTTPException(503,'Targeted cancellation could not be confirmed. Studio will keep checking the original job and will not issue a global interrupt.')
 
 
 @router.post('/jobs/{identifier}/priority')
@@ -87,14 +109,25 @@ async def prioritize(identifier:str,values:dict,session=Depends(require_session)
 @router.post('/assets/{identifier}/select')
 async def select(identifier:str,session=Depends(require_session)):
     result=select_asset(identifier)
-    asset=db.one('SELECT scene_id FROM assets WHERE id=?',(identifier,))
+    asset=db.one('SELECT * FROM assets WHERE id=?',(identifier,))
     supersede_pending(asset['scene_id'])
+    project=db.project(asset['project_id'])
+    if asset['kind']=='image' and project['settings'].get('qa_enabled') and project['settings'].get('qa_auto',True) and project['settings'].get('qa_image_mode')=='selected':
+        from .quality import queue_review
+        try:await queue_review(identifier,automatic=bool(state(project['id'])['auto_run']) and project['mode']!='manual')
+        except Exception as error:
+            metadata=json.loads(asset['metadata']);metadata['qa_error']='Visual review is unavailable: '+str(error)[:300]+'. You can approve this asset manually.'
+            db.execute('UPDATE assets SET metadata=? WHERE id=?',(encode(metadata),identifier))
     return result
 
 
 @router.post('/assets/{identifier}/approve')
 async def approve(identifier:str,session=Depends(require_session)):
-    return approve_and_continue(identifier)
+    result=approve_and_continue(identifier)
+    from .production import Dispatcher
+    asset=db.one('SELECT project_id,kind FROM assets WHERE id=?',(identifier,))
+    if asset['kind']=='video':await Dispatcher().maybe_export(asset['project_id'])
+    return result
 
 
 @router.post('/assets/{identifier}/ticket')

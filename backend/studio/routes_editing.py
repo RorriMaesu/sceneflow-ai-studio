@@ -6,7 +6,7 @@ from fastapi import APIRouter,Depends,HTTPException,Request,UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel,ConfigDict,Field
 
-from .adapters import graph_hash,registry,validate_graph
+from .adapters import graph_hash,registry,validate_graph,validate_media_mappings
 from .bundles import create_bundle,restore_bundle
 from .config import ROOT
 from .exports import save_timeline
@@ -16,6 +16,18 @@ from .security import require_session,ticket,verify_ticket
 from .store import db,encode,now,uid
 
 router=APIRouter(prefix='/api')
+
+
+@router.post('/assets/{identifier}/qa')
+async def review_asset(identifier:str,values:dict|None=None,session=Depends(require_session)):
+    from .quality import queue_review
+    return await queue_review(identifier,(values or {}).get('model'))
+
+
+@router.get('/projects/{identifier}/qa')
+async def reviews(identifier:str,session=Depends(require_session)):
+    db.project(identifier)
+    return [{**row,'body':json.loads(row['body'])} for row in db.all('SELECT q.* FROM qa q JOIN assets a ON a.id=q.asset_id WHERE a.project_id=? ORDER BY q.created DESC',(identifier,))]
 
 
 async def receive(file,suffix,limit):
@@ -141,6 +153,8 @@ def validate_mappings(body):
 @router.post('/workflows/import')
 async def import_workflow(body:WorkflowInput,session=Depends(require_session)):
     validate_mappings(body)
+    media_reasons=validate_media_mappings(body.model_dump())
+    if media_reasons:raise ValueError('; '.join(media_reasons))
     if not registry.info:await registry.discover()
     reasons=validate_graph(body.graph,registry.info,body.output_nodes)
     identifier=uid();entry={'id':identifier,**body.model_dump(),'workflow_hash':graph_hash(body.graph),'imported':True,'tested':False,'capabilities':{'source_image':body.task=='image_to_video','audio':any(n.get('class_type')=='SaveAudio' for n in body.graph.values())},'status':'ready' if not reasons else 'unavailable','reasons':reasons}

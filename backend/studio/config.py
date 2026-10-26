@@ -4,8 +4,8 @@ import secrets
 import time
 from pathlib import Path
 
-VERSION = '0.4.0'
-PHASE = 'Phase 4 · Editing & assembly'
+VERSION = '0.5.0'
+PHASE = 'Phase 5 · Local studio release'
 ROOT = Path(os.environ.get('STUDIO_ROOT', Path(__file__).resolve().parents[2])).resolve()
 PORT = int(os.environ.get('STUDIO_PORT', '8770'))
 for name in ['config', 'database', 'cache', 'temp', 'logs', 'projects', 'backups', 'workflows']:
@@ -28,7 +28,9 @@ else:
 
 def rotate_pair_code():
     private.update(pair_code=secrets.token_urlsafe(9), pair_expires=time.time() + 600)
-    SECRET_FILE.write_text(json.dumps(private, indent=2), encoding='utf-8')
+    temporary=SECRET_FILE.with_name(SECRET_FILE.name+'.'+secrets.token_hex(4)+'.tmp')
+    temporary.write_text(json.dumps(private, indent=2), encoding='utf-8')
+    os.replace(temporary,SECRET_FILE)
     return private['pair_code']
 
 

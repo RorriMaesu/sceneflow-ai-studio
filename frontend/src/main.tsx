@@ -69,7 +69,8 @@ import type {
 import "./style.css";
 import { ProductionSettings } from "./production-settings";
 import { TimelineEditor } from "./timeline-editor";
-import { BackupPanel,WorkflowImporter,SceneHistory } from "./tools-panels";
+import { BackupPanel, WorkflowImporter, SceneHistory } from "./tools-panels";
+import { AssetQuality } from "./quality-panel";
 
 const client = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -115,6 +116,7 @@ function Button({
   title = "",
   className = "",
   type = "button",
+  ...rest
 }: {
   children: React.ReactNode;
   onClick?: () => void;
@@ -123,9 +125,10 @@ function Button({
   title?: string;
   className?: string;
   type?: "submit" | "button";
-}) {
+} & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
+      {...rest}
       type={type}
       onClick={onClick}
       disabled={disabled}
@@ -177,7 +180,35 @@ function Media({
   className?: string;
   controls?: boolean;
 }) {
-  const { data } = useQuery({
+  const playback = useRef({ time: 0, playing: false });
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    playback.current = { time: 0, playing: false };
+    setFailed(false);
+  }, [asset?.id]);
+  const mediaEvents = {
+    onTimeUpdate: (e: React.SyntheticEvent<HTMLMediaElement>) => {
+      playback.current.time = e.currentTarget.currentTime;
+    },
+    onPlay: () => {
+      playback.current.playing = true;
+    },
+    onPause: (e: React.SyntheticEvent<HTMLMediaElement>) => {
+      if (e.currentTarget.readyState > 1) playback.current.playing = false;
+    },
+    onLoadedMetadata: (e: React.SyntheticEvent<HTMLMediaElement>) => {
+      const element = e.currentTarget;
+      if (playback.current.time > 0 && Number.isFinite(element.duration))
+        element.currentTime = Math.min(
+          playback.current.time,
+          Math.max(0, element.duration - 0.05),
+        );
+      if (playback.current.playing) element.play().catch(() => {});
+      setFailed(false);
+    },
+    onError: () => setFailed(true),
+  };
+  const { data, refetch } = useQuery({
     queryKey: ["media", asset?.id],
     queryFn: () =>
       request<{ url: string }>(`/api/assets/${asset!.id}/ticket`, {}),
@@ -192,8 +223,25 @@ function Media({
       </div>
     );
   const source = useConnection.getState().url + data.url;
+  if (failed)
+    return (
+      <div className="media-placeholder">
+        <p>Preview unavailable. Restore missing media or refresh its access.</p>
+        <button
+          className="button"
+          onClick={() => {
+            void refetch().then((result) => {
+              if (result.data) setFailed(false);
+            });
+          }}
+        >
+          Refresh preview
+        </button>
+      </div>
+    );
   return asset.kind === "video" || asset.kind === "export" ? (
     <video
+      {...mediaEvents}
       className={className}
       src={source}
       controls={controls}
@@ -202,7 +250,7 @@ function Media({
       preload="metadata"
     />
   ) : asset.kind === "audio" ? (
-    <audio src={source} controls />
+    <audio {...mediaEvents} src={source} controls />
   ) : (
     <img className={className} src={source} alt="Scene asset" />
   );
@@ -296,6 +344,37 @@ function Studio() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
   useEffect(() => {
+    if (!pairOpen && !newOpen && !searchOpen) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]');
+    if (!dialog) return;
+    dialog.querySelector<HTMLElement>("input,textarea,button")?.focus();
+    const trap = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+      const items = Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          "button:not(:disabled),input:not(:disabled),textarea:not(:disabled),select:not(:disabled),a[href]",
+        ),
+      ).filter((el) => el.getClientRects().length);
+      if (!items.length) return;
+      if (e.shiftKey && document.activeElement === items[0]) {
+        e.preventDefault();
+        items[items.length - 1].focus();
+      } else if (
+        !e.shiftKey &&
+        document.activeElement === items[items.length - 1]
+      ) {
+        e.preventDefault();
+        items[0].focus();
+      }
+    };
+    document.addEventListener("keydown", trap);
+    return () => {
+      document.removeEventListener("keydown", trap);
+      if (previous?.isConnected) previous.focus();
+    };
+  }, [pairOpen, newOpen, searchOpen]);
+  useEffect(() => {
     if (!connection.token) return;
     let socket: WebSocket | undefined;
     let stopped = false;
@@ -374,6 +453,26 @@ function Studio() {
   }
   async function produce(scope: string) {
     if (!project) return;
+    if (scope === "all" && !project.scenes.length) {
+      if (!project.settings.llm || project.mode === "manual") {
+        setPage("AI Director");
+        notify(
+          "Add scenes manually, or choose a local planning model to develop the brief.",
+        );
+        return;
+      }
+      await act(
+        () =>
+          request(`/api/projects/${project.id}/plan`, {
+            model: project.settings.llm,
+            scene_count: project.settings.scene_count || 4,
+            auto_apply: project.mode === "automatic",
+            auto_continue: project.mode === "automatic",
+          }),
+        "Planning queued. Hybrid mode presents a proposal for review.",
+      );
+      return;
+    }
     await act(
       () =>
         request(`/api/projects/${project.id}/produce`, {
@@ -586,6 +685,8 @@ function Studio() {
                         <p>Every great story starts somewhere.</p>
                       </div>
                       <Button
+                        title="New project"
+                        aria-label="New project"
                         onClick={() =>
                           connection.token
                             ? setNewOpen(true)
@@ -879,11 +980,19 @@ function Studio() {
                         }
                         disabled={featurePhase < 2}
                       >
-                        <Pause size={15} />
+                        <Pause size={15} aria-label="Pause new jobs" />
                       </Button>
                     </div>
                   </div>
-                  {featurePhase >= 3 && <ProductionSettings key={project.id} project={project} workflows={models.data || []} models={data?.services.ollama.models || []} act={act} />}
+                  {featurePhase >= 3 && (
+                    <ProductionSettings
+                      key={project.id}
+                      project={project}
+                      workflows={models.data || []}
+                      models={data?.services.ollama.models || []}
+                      act={act}
+                    />
+                  )}
                   {["Storyboard", "Image Studio", "Video Studio"].includes(
                     page,
                   ) ? (
@@ -995,13 +1104,25 @@ function Studio() {
                                                 : ""
                                         }
                                       >
-                                        {video
-                                          ? "Video ready"
-                                          : image
-                                            ? "Still ready"
-                                            : job
-                                              ? short(job.status)
-                                              : "Not started"}
+                                        {s.body.disabled
+                                          ? "Excluded"
+                                          : video
+                                            ? s.selected_video_id &&
+                                              s.video_current === false
+                                              ? "Video outdated"
+                                              : video.approved
+                                                ? "Video ready"
+                                                : "Review video"
+                                            : image
+                                              ? s.selected_image_id &&
+                                                s.image_current === false
+                                                ? "Still outdated"
+                                                : image.approved
+                                                  ? "Still ready"
+                                                  : "Choose a still"
+                                              : job
+                                                ? short(job.status)
+                                                : "Not started"}
                                       </Badge>
                                       <span>{s.assets.length} takes</span>
                                     </div>
@@ -1044,11 +1165,17 @@ function Studio() {
                   ) : page === "AI Director" ? (
                     <DirectorPage
                       project={project}
+                      selectedScene={selected}
                       models={data?.services.ollama.models || []}
                       act={act}
                     />
                   ) : page === "Timeline" ? (
-                    <TimelineEditor key={project.id} project={project} act={act} renderMedia={a=><Media asset={a} controls/>}/>
+                    <TimelineEditor
+                      key={project.id}
+                      project={project}
+                      act={act}
+                      renderMedia={(a) => <Media asset={a} controls />}
+                    />
                   ) : page === "Exports" ? (
                     <ExportsPage
                       assets={(data?.assets || []).filter(
@@ -1399,15 +1526,36 @@ function SceneInspector({
   produce: (s: string) => void;
   close: () => void;
 }) {
-  const draftKey='sceneflow.draft.'+scene.id;
-  const [draft]=useState(()=>{try{return JSON.parse(localStorage.getItem(draftKey)||'null')}catch{return null}});
+  const draftKey = "sceneflow.draft." + scene.id;
+  const [draft] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(draftKey) || "null");
+    } catch {
+      return null;
+    }
+  });
   const [title, setTitle] = useState(draft?.title ?? scene.title);
   const [body, setBody] = useState(draft?.body ?? { ...scene.body });
-  const [baseRevision,setBaseRevision]=useState(draft?.revision ?? scene.revision);
+  const [baseRevision, setBaseRevision] = useState(
+    draft?.revision ?? scene.revision,
+  );
   const [tab, setTab] = useState("Direction");
   const [dirty, setDirty] = useState(!!draft);
-  useEffect(()=>{if(dirty)localStorage.setItem(draftKey,JSON.stringify({title,body,revision:baseRevision}));else localStorage.removeItem(draftKey)},[title,body,dirty]);
-  useEffect(()=>{if(!dirty){setTitle(scene.title);setBody({...scene.body});setBaseRevision(scene.revision)}},[scene.revision,dirty]);
+  useEffect(() => {
+    if (dirty)
+      localStorage.setItem(
+        draftKey,
+        JSON.stringify({ title, body, revision: baseRevision }),
+      );
+    else localStorage.removeItem(draftKey);
+  }, [title, body, dirty]);
+  useEffect(() => {
+    if (!dirty) {
+      setTitle(scene.title);
+      setBody({ ...scene.body });
+      setBaseRevision(scene.revision);
+    }
+  }, [scene.revision, dirty]);
   const change = (key: string, value: any) => {
     setBody({ ...body, [key]: value });
     setDirty(true);
@@ -1441,7 +1589,25 @@ function SceneInspector({
         ))}
       </div>
       <div className="inspector-content">
-        {dirty && <p className="muted">Draft saved in this browser. {baseRevision!==scene.revision ? 'A newer scene revision exists; compare before saving.' : 'Save to update pending generation.'} <button className="text-link" onClick={()=>{setDirty(false);setTitle(scene.title);setBody({...scene.body});setBaseRevision(scene.revision)}}>Discard draft</button></p>}
+        {dirty && (
+          <p className="muted">
+            Draft saved in this browser.{" "}
+            {baseRevision !== scene.revision
+              ? "A newer scene revision exists; compare before saving."
+              : "Save to update pending generation."}{" "}
+            <button
+              className="text-link"
+              onClick={() => {
+                setDirty(false);
+                setTitle(scene.title);
+                setBody({ ...scene.body });
+                setBaseRevision(scene.revision);
+              }}
+            >
+              Discard draft
+            </button>
+          </p>
+        )}
         {tab === "Direction" ? (
           <>
             <label>
@@ -1498,20 +1664,28 @@ function SceneInspector({
               <Lock size={12} /> Revision {scene.revision}. Active renders keep
               their original instructions.
             </div>
+            {dirty && (
+              <p className="muted">
+                {body.image_prompt !== scene.body.image_prompt ||
+                body.image_workflow !== scene.body.image_workflow
+                  ? "This change needs a new still and animation. Earlier takes remain available."
+                  : "Motion and timing changes reuse the selected still and need a new animation."}
+              </p>
+            )}
             <Button
               primary
               disabled={!dirty}
               onClick={() =>
-                act(
-                  async () => {
-                    const result=await request(
-                      "/api/scenes/" + scene.id,
-                      { revision: baseRevision, title, body },
-                      "PATCH",
-                    );setDirty(false);setBaseRevision(result.revision);return result;
-                  },
-                  "New scene revision saved. Active jobs keep their original settings.",
-                )
+                act(async () => {
+                  const result = await request(
+                    "/api/scenes/" + scene.id,
+                    { revision: baseRevision, title, body },
+                    "PATCH",
+                  );
+                  setDirty(false);
+                  setBaseRevision(result.revision);
+                  return result;
+                }, "New scene revision saved. Active jobs keep their original settings.")
               }
             >
               <Save size={15} />
@@ -1561,7 +1735,7 @@ function SceneInspector({
               <input
                 type="number"
                 min="1"
-                max="30"
+                max="5"
                 value={body.duration || 3}
                 onChange={(e) => change("duration", Number(e.target.value))}
               />
@@ -1579,15 +1753,16 @@ function SceneInspector({
               primary
               disabled={!dirty}
               onClick={() =>
-                act(
-                  () =>
-                    request(
-                      "/api/scenes/" + scene.id,
-                      { revision: scene.revision, body },
-                      "PATCH",
-                    ),
-                  "Settings saved as a new revision.",
-                )
+                act(async () => {
+                  const result = await request(
+                    "/api/scenes/" + scene.id,
+                    { revision: baseRevision, body },
+                    "PATCH",
+                  );
+                  setDirty(false);
+                  setBaseRevision(result.revision);
+                  return result;
+                }, "Settings saved as a new revision.")
               }
             >
               <Save size={15} />
@@ -1597,7 +1772,9 @@ function SceneInspector({
               Scene overrides are saved independently from project defaults.
             </p>
           </>
-        ) : tab === "History" ? <SceneHistory scene={scene} act={act}/> : (
+        ) : tab === "History" ? (
+          <SceneHistory scene={scene} act={act} />
+        ) : (
           <>
             {scene.assets.length ? (
               scene.assets.map((a) => (
@@ -1610,6 +1787,9 @@ function SceneInspector({
                     </Badge>
                   </div>
                   <p>Created {new Date(a.created * 1000).toLocaleString()}</p>
+                  {featurePhase >= 5 && ["image", "video"].includes(a.kind) && (
+                    <AssetQuality asset={a} project={project} act={act} />
+                  )}
                   <div className="button-row">
                     <Button
                       onClick={() =>
@@ -1664,7 +1844,27 @@ function SceneInspector({
             Animate
           </Button>
         </div>
-        {featurePhase>=4 && <label className="upload-label">Import a video take<input type="file" accept=".mp4,.webm,.mkv,.mov" onChange={e=>{const file=e.target.files?.[0];if(file)act(()=>upload(`/api/projects/${project.id}/import-media?scene_id=${scene.id}`,file),'Video imported into this scene.')}}/></label>}
+        {featurePhase >= 4 && (
+          <label className="upload-label">
+            Import a video take
+            <input
+              type="file"
+              accept=".mp4,.webm,.mkv,.mov"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file)
+                  act(
+                    () =>
+                      upload(
+                        `/api/projects/${project.id}/import-media?scene_id=${scene.id}`,
+                        file,
+                      ),
+                    "Video imported into this scene.",
+                  );
+              }}
+            />
+          </label>
+        )}
         {featurePhase >= 2 && (
           <label className="upload-label">
             <Upload size={14} />
@@ -1697,6 +1897,7 @@ function QueuePage({
   project: Project;
   act: any;
 }) {
+  const [reviewed, setReviewed] = useState<Record<string, boolean>>({});
   return (
     <section className="panel">
       <div className="section-heading">
@@ -1757,7 +1958,12 @@ function QueuePage({
               <div className="meter">
                 <span style={{ width: `${j.progress * 100}%` }} />
               </div>
-              <span>{["image","video"].includes(j.kind) && j.status!=="completed" ? "Stage " : ""}{Math.round(j.progress * 100)}%</span>
+              <span>
+                {["image", "video"].includes(j.kind) && j.status !== "completed"
+                  ? "Stage "
+                  : ""}
+                {Math.round(j.progress * 100)}%
+              </span>
             </div>
             <Button
               onClick={() =>
@@ -1771,8 +1977,105 @@ function QueuePage({
             >
               <RefreshCw size={14} />
             </Button>
-            {j.status === "queued" && <><Button title="Move to front of pending work" onClick={()=>act(()=>request(`/api/jobs/${j.id}/priority`,{priority:80}),"Pending job prioritized.")}><ArrowUp size={14}/></Button><Button title="Cancel pending job" onClick={()=>act(()=>request(`/api/jobs/${j.id}/cancel`,{}),"Pending job cancelled.")}><X size={14}/></Button></>}
-            <details><summary>Saved inputs</summary><pre style={{maxWidth:300,maxHeight:240,overflow:"auto",whiteSpace:"pre-wrap"}}>{JSON.stringify({scene:j.snapshot.scene_id,revision:j.snapshot.scene_revision,prompt:j.snapshot.positive_prompt,source:j.snapshot.source_asset_id,seed:j.snapshot.seed,workflow:j.snapshot.workflow_id},null,2)}</pre></details>
+            {j.status === "queued" && (
+              <>
+                <Button
+                  title="Move to front of pending work"
+                  onClick={() =>
+                    act(
+                      () =>
+                        request(`/api/jobs/${j.id}/priority`, { priority: 80 }),
+                      "Pending job prioritized.",
+                    )
+                  }
+                >
+                  <ArrowUp size={14} />
+                </Button>
+                <Button
+                  title="Cancel pending job"
+                  onClick={() =>
+                    act(
+                      () => request(`/api/jobs/${j.id}/cancel`, {}),
+                      "Pending job cancelled.",
+                    )
+                  }
+                >
+                  <X size={14} />
+                </Button>
+              </>
+            )}
+            {["submitted", "reconciling"].includes(j.status) &&
+              ["image", "video"].includes(j.kind) && (
+                <Button
+                  title="Cancel only this Studio-owned render"
+                  onClick={() =>
+                    act(
+                      () => request(`/api/jobs/${j.id}/cancel`, {}),
+                      "Targeted cancellation requested. Earlier takes are preserved.",
+                    )
+                  }
+                >
+                  Stop this render
+                </Button>
+              )}
+            {j.status === "needs_attention" && (
+              <details>
+                <summary>Review before retrying</summary>
+                <p>
+                  Check the original job and its outputs. A retry creates a new
+                  attempt with these saved inputs.
+                </p>
+                <p>Backend prompt: {j.comfy_prompt_id || "not confirmed"}</p>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={!!reviewed[j.id]}
+                    onChange={(e) =>
+                      setReviewed((v) => ({ ...v, [j.id]: e.target.checked }))
+                    }
+                  />{" "}
+                  I reviewed the original result.
+                </label>
+                <Button
+                  disabled={!reviewed[j.id]}
+                  onClick={() =>
+                    act(
+                      () =>
+                        request(`/api/jobs/${j.id}/retry`, {
+                          confirm_uncertain: true,
+                        }),
+                      "A new reviewed attempt was queued.",
+                    )
+                  }
+                >
+                  Retry reviewed attempt
+                </Button>
+              </details>
+            )}
+            <details>
+              <summary>Saved inputs</summary>
+              <pre
+                style={{
+                  maxWidth: 300,
+                  maxHeight: 240,
+                  overflow: "auto",
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {JSON.stringify(
+                  {
+                    scene: j.snapshot.scene_id,
+                    revision: j.snapshot.scene_revision,
+                    prompt: j.snapshot.positive_prompt,
+                    source: j.snapshot.source_asset_id,
+                    seed: j.snapshot.seed,
+                    workflow: j.snapshot.workflow_id,
+                  },
+                  null,
+                  2,
+                )}
+              </pre>
+            </details>
           </div>
         ))
       ) : (
@@ -1787,16 +2090,22 @@ function QueuePage({
 }
 function DirectorPage({
   project,
+  selectedScene,
   models,
   act,
 }: {
   project: Project;
+  selectedScene?: string;
   models: any[];
   act: any;
 }) {
   const [text, setText] = useState("");
-  const history = useQuery<any>({queryKey:["director",project.id], queryFn:()=>request(`/api/projects/${project.id}/director`), refetchInterval:4000});
-  const [autoContinue,setAutoContinue] = useState(false);
+  const history = useQuery<any>({
+    queryKey: ["director", project.id],
+    queryFn: () => request(`/api/projects/${project.id}/director`),
+    refetchInterval: 4000,
+  });
+  const [autoContinue, setAutoContinue] = useState(false);
   const [model, setModel] = useState(project.settings.llm || "");
   const [count, setCount] = useState(4);
   return (
@@ -1813,28 +2122,85 @@ function DirectorPage({
             moment. Your local AI works with your project’s creative context.
           </p>
         </div>
-        {history.data?.chat.map((m:any)=><div className="director-answer" key={m.id}><span className="tiny-label">{m.role === "user" ? "YOU" : "DIRECTOR"}</span><p style={{whiteSpace:"pre-wrap"}}>{m.content}</p></div>)}
-        {history.data?.proposals.filter((p:any)=>p.status==="pending").map((p:any)=><article className="panel" key={p.id}>
-          <h3>{p.kind === "plan" ? "Proposed storyboard" : "Proposed creative changes"}</h3>
-          <p>{p.body.synopsis || p.body.reply}</p>
-          <details><summary>Review every proposed change</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",maxHeight:400,overflowY:"auto"}}>{JSON.stringify(p.body,null,2)}</pre></details>
-          <div className="button-row"><Button primary onClick={()=>act(async()=>{await request(`/proposals/${p.id}/apply`.replace("/proposals","/api/proposals"),{});history.refetch();},"Creative changes saved as new revisions.")}>Apply reviewed proposal</Button><Button onClick={()=>act(async()=>{await request(`/api/proposals/${p.id}/dismiss`,{});history.refetch();},"Proposal dismissed.")}>Dismiss</Button></div>
-        </article>)}
+        {history.data?.chat.map((m: any) => (
+          <div className="director-answer" key={m.id}>
+            <span className="tiny-label">
+              {m.role === "user" ? "YOU" : "DIRECTOR"}
+            </span>
+            <p style={{ whiteSpace: "pre-wrap" }}>{m.content}</p>
+          </div>
+        ))}
+        {history.data?.proposals
+          .filter((p: any) => p.status === "pending")
+          .map((p: any) => (
+            <article className="panel" key={p.id}>
+              <h3>
+                {p.kind === "plan"
+                  ? "Proposed storyboard"
+                  : "Proposed creative changes"}
+              </h3>
+              <p>{p.body.synopsis || p.body.reply}</p>
+              <details>
+                <summary>Review every proposed change</summary>
+                <pre
+                  style={{
+                    whiteSpace: "pre-wrap",
+                    overflowWrap: "anywhere",
+                    maxHeight: 400,
+                    overflowY: "auto",
+                  }}
+                >
+                  {JSON.stringify(p.body, null, 2)}
+                </pre>
+              </details>
+              <div className="button-row">
+                <Button
+                  primary
+                  onClick={() =>
+                    act(async () => {
+                      await request(
+                        `/proposals/${p.id}/apply`.replace(
+                          "/proposals",
+                          "/api/proposals",
+                        ),
+                        {},
+                      );
+                      history.refetch();
+                    }, "Creative changes saved as new revisions.")
+                  }
+                >
+                  Apply reviewed proposal
+                </Button>
+                <Button
+                  onClick={() =>
+                    act(async () => {
+                      await request(`/api/proposals/${p.id}/dismiss`, {});
+                      history.refetch();
+                    }, "Proposal dismissed.")
+                  }
+                >
+                  Dismiss
+                </Button>
+              </div>
+            </article>
+          ))}
         <form
           className="director-composer"
           onSubmit={(e) => {
             e.preventDefault();
             act(async () => {
-              await request(
-                `/api/projects/${project.id}/director`,
-                { model, message: text },
-              );
+              await request(`/api/projects/${project.id}/director`, {
+                model,
+                message: text,
+                scene_id: selectedScene || null,
+              });
               setText("");
               history.refetch();
             }, "Director request queued. Follow progress in Generation Queue.");
           }}
         >
-          <textarea aria-label="Message your Director"
+          <textarea
+            aria-label="Message your Director"
             rows={4}
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -1854,7 +2220,8 @@ function DirectorPage({
               ))}
             </select>
             <Button
-              type="submit" aria-label="Send to Director"
+              type="submit"
+              aria-label="Send to Director"
               primary
               disabled={featurePhase < 3 || !model || !text}
             >
@@ -1902,7 +2269,16 @@ function DirectorPage({
           <WandSparkles size={16} />
           Plan storyboard
         </Button>
-        {project.mode === "automatic" && !project.scenes.length && <label><input type="checkbox" checked={autoContinue} onChange={e=>setAutoContinue(e.target.checked)}/> Apply the new plan and continue through production</label>}
+        {project.mode === "automatic" && !project.scenes.length && (
+          <label>
+            <input
+              type="checkbox"
+              checked={autoContinue}
+              onChange={(e) => setAutoContinue(e.target.checked)}
+            />{" "}
+            Apply the new plan and continue through production
+          </label>
+        )}
         <p className="muted">
           The AI proposes a structured plan. You keep the final say.
         </p>
@@ -1946,6 +2322,9 @@ function ExportsPage({
             <div className="export-card" key={a.id}>
               <Media asset={a} controls />
               <h3>{a.metadata.title || "Final movie"}</h3>
+              {a.metadata.timeline_revision !== project.timeline?.revision && (
+                <Badge>Earlier timeline revision</Badge>
+              )}
               <p>
                 {a.metadata.width} × {a.metadata.height} ·{" "}
                 {Number(a.metadata.duration || 0).toFixed(2)}s
@@ -1992,7 +2371,7 @@ function ModelsPage({
 }) {
   return (
     <section>
-      {featurePhase>=4 && <WorkflowImporter act={act}/>}
+      {featurePhase >= 4 && <WorkflowImporter act={act} />}
       <div className="section-heading">
         <div>
           <span className="eyebrow">YOUR CREATIVE TOOLKIT</span>
@@ -2079,7 +2458,7 @@ function SettingsPage({
   data?: Bootstrap;
   act: any;
   onPair: () => void;
-  project?:Project;
+  project?: Project;
 }) {
   const [comfy, setComfy] = useState(
     data?.settings.comfy_url || "http://127.0.0.1:8188",
@@ -2087,7 +2466,8 @@ function SettingsPage({
   const [ollama, setOllama] = useState(
     data?.settings.ollama_url || "http://127.0.0.1:11434",
   );
-  const [pairCode,setPairCode] = useState("");
+  const [pairCode, setPairCode] = useState("");
+  const [diagnostic, setDiagnostic] = useState<any>(null);
   return (
     <section className="settings-page">
       <span className="eyebrow">MAKE YOURSELF AT HOME</span>
@@ -2129,9 +2509,24 @@ function SettingsPage({
             <Link2 size={15} />
             Pair browser
           </Button>
-          <Button disabled={!data} onClick={()=>act(async()=>{const result=await request('/api/session/pair-code',{});setPairCode(result.code);},"New one-use code created; it expires in ten minutes.")}>Create code for another browser</Button>
+          <Button
+            disabled={!data}
+            onClick={() =>
+              act(async () => {
+                const result = await request("/api/session/pair-code", {});
+                setPairCode(result.code);
+              }, "New one-use code created; it expires in ten minutes.")
+            }
+          >
+            Create code for another browser
+          </Button>
         </div>
-        {pairCode && <p>One-use pairing code: <strong>{pairCode}</strong> · expires in 10 minutes</p>}
+        {pairCode && (
+          <p>
+            One-use pairing code: <strong>{pairCode}</strong> · expires in 10
+            minutes
+          </p>
+        )}
       </div>
       <div className="panel settings-panel">
         <h3>
@@ -2194,7 +2589,80 @@ function SettingsPage({
           Source & release notes <ExternalLink size={13} />
         </a>
       </div>
-      {featurePhase>=4 && <BackupPanel project={project} act={act}/>}
+      {featurePhase >= 4 && <BackupPanel project={project} act={act} />}
+      {featurePhase >= 5 && (
+        <section className="panel settings-panel">
+          <h3>Setup & readiness</h3>
+          <ol>
+            <li>
+              Open START_STUDIO.bat. It starts available local services and
+              opens your private studio.
+            </li>
+            <li>
+              Pair this browser with the one-use local code. If your browser
+              asks, allow local-network access for this studio.
+            </li>
+            <li>
+              Refresh discovery in Model Library, then choose planning, image
+              and video models independently.
+            </li>
+            <li>
+              Open a project, review the still first, and animate that exact
+              frame. Optional AI quality checking starts off.
+            </li>
+          </ol>
+          <div className="button-row">
+            <Button
+              onClick={() =>
+                act(
+                  async () => setDiagnostic(await request("/api/diagnostics")),
+                  "Readiness check complete.",
+                )
+              }
+            >
+              Run readiness check
+            </Button>
+            <Button
+              disabled={!diagnostic}
+              onClick={() => {
+                const link = document.createElement("a");
+                const url = URL.createObjectURL(
+                  new Blob([JSON.stringify(diagnostic, null, 2)], {
+                    type: "application/json",
+                  }),
+                );
+                link.href = url;
+                link.download = "SceneFlow-diagnostics.json";
+                link.click();
+                window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+              }}
+            >
+              Download diagnostics
+            </Button>
+            <Button
+              onClick={() =>
+                act(async () => {
+                  await request("/api/session/revoke", {});
+                  useConnection.getState().disconnect();
+                }, "This browser session was revoked.")
+              }
+            >
+              Revoke this browser
+            </Button>
+          </div>
+          {diagnostic && (
+            <pre
+              style={{
+                whiteSpace: "pre-wrap",
+                maxHeight: 360,
+                overflow: "auto",
+              }}
+            >
+              {JSON.stringify(diagnostic, null, 2)}
+            </pre>
+          )}
+        </section>
+      )}
     </section>
   );
 }
@@ -2240,4 +2708,3 @@ createRoot(document.getElementById("root")!).render(
     </QueryClientProvider>
   </React.StrictMode>,
 );
-

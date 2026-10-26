@@ -12,6 +12,5 @@ if not exist "%~dp0.venv\Scripts\python.exe" (
   exit /b 1
 )
 echo Your private studio opens at http://127.0.0.1:8770
-echo Leave this window open while production runs. Closing your browser is fine.
-"%~dp0.venv\Scripts\python.exe" "%~dp0backend\run.py"
-pause
+"%~dp0.venv\Scripts\python.exe" "%~dp0backend\launch.py"
+if errorlevel 1 pause

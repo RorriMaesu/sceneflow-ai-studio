@@ -115,7 +115,7 @@ class Registry:
             db.execute('INSERT OR REPLACE INTO workflow_registry VALUES(?,?,?)', (data['id'], encode(data), now()))
         for entry in self.list():
             if entry.get('imported'):
-                entry['reasons'] = validate_graph(entry['graph'], self.info, entry['output_nodes'])
+                entry['reasons'] = validate_graph(entry['graph'], self.info, entry['output_nodes'])+validate_media_mappings(entry)
                 entry['status'] = 'ready' if not entry['reasons'] else 'unavailable'
                 db.execute('UPDATE workflow_registry SET body=?,updated=? WHERE id=?', (encode(entry), now(), entry['id']))
         db.event('workflows.discovered', {'count': len(self.list())})
@@ -148,6 +148,8 @@ class Registry:
             graph = wan_graph(snapshot, prefix, image)
         else:
             graph = copy.deepcopy(entry['graph'])
+            media_reasons=validate_media_mappings(entry)
+            if media_reasons:raise ValueError('; '.join(media_reasons))
             values = {**snapshot, 'source_image': image, 'output_prefix': prefix}
             for key, mapping in entry['mappings'].items():
                 if key in values and values[key] is not None:
@@ -164,3 +166,15 @@ class Registry:
 
 
 registry = Registry()
+
+
+def validate_media_mappings(entry):
+    reasons=[];graph=entry.get('graph',{});mappings=entry.get('mappings',{})
+    targets=mappings.get('source_image',[]) if isinstance(mappings,dict) else []
+    targets=targets if isinstance(targets,list) else [targets]
+    for key,value in graph.items():
+        if not isinstance(value,dict):continue
+        if value.get('class_type')=='LoadAudio':reasons.append('Audio conditioning requires a separately verified adapter; imported sound can be mixed in the timeline.')
+        if value.get('class_type')=='LoadImage' and (entry.get('task')!='image_to_video' or not any(isinstance(t,dict) and t.get('node')==key and t.get('input')=='image' for t in targets)):
+            reasons.append('Every image loader must use the exact registered source_image mapping. Static reference/editing inputs are not supported by this adapter.')
+    return reasons

@@ -34,7 +34,8 @@ def ffmpeg(args,timeout=1200):
 
 def encode_options(settings):
     codec='libx265' if settings.get('codec')=='h265' else 'libx264'
-    return ['-c:v',codec,'-preset','fast','-crf',str(int(settings.get('crf',18))),'-threads','2','-pix_fmt','yuv420p','-c:a','aac','-ar','48000','-ac','2','-movflags','+faststart']
+    extra=['-x265-params','pools=2:frame-threads=2:log-level=error','-tag:v','hvc1'] if codec=='libx265' else []
+    return ['-c:v',codec,*extra,'-preset','fast','-crf',str(int(settings.get('crf',18))),'-threads','2','-pix_fmt','yuv420p','-c:a','aac','-ar','48000','-ac','2','-movflags','+faststart']
 
 
 @lru_cache(maxsize=4)
@@ -64,10 +65,14 @@ def execute(job,snapshot):
         args=['-protocol_whitelist','file,pipe','-ss',str(start),'-t',str(span)]
         if asset['kind']=='image':args=['-loop','1','-t',str(span)]
         args+=['-i',str(source)]
-        if not metadata.get('audio_streams') or clip.get('mute') or settings.get('audio_mode','silent')=='silent':
+        sidecar=clip.get('audio_asset_id') and not metadata.get('audio_streams') and not clip.get('mute') and settings.get('audio_mode','silent')!='silent'
+        if sidecar:
+            audio_path=verified_source({'asset_id':clip['audio_asset_id'],'source_sha256':clip['audio_source_sha256']})
+            args+=['-protocol_whitelist','file,pipe','-ss',str(start),'-t',str(span),'-i',str(audio_path)]
+        if (not metadata.get('audio_streams') and not sidecar) or clip.get('mute') or settings.get('audio_mode','silent')=='silent':
             args+=['-f','lavfi','-t',str(duration),'-i','anullsrc=r=48000:cl=stereo'];audio='1:a:0';audio_filter='asetpts=PTS-STARTPTS'
         else:
-            has_audio=True;audio='0:a:0';audio_filter=f"asetpts=PTS-STARTPTS,{tempo(speed)},volume={float(clip.get('volume',1))}"
+            has_audio=True;audio='1:a:0' if sidecar else '0:a:0';audio_filter=f"asetpts=PTS-STARTPTS,{tempo(speed)},volume={float(clip.get('volume',1))}"
         fit='increase' if settings.get('fit')=='crop' else 'decrease'
         sizing=f'scale={width}:{height}:force_original_aspect_ratio={fit},'+(f'crop={width}:{height}' if fit=='increase' else f'pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black')
         video=f'setpts=(PTS-STARTPTS)/{speed},{sizing},setsar=1,fps={fps},format=yuv420p'

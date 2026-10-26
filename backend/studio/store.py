@@ -61,8 +61,17 @@ class Store:
             CREATE TABLE IF NOT EXISTS workflow_registry(id TEXT PRIMARY KEY,body TEXT NOT NULL,updated REAL);
             CREATE TABLE IF NOT EXISTS chat(id TEXT PRIMARY KEY,project_id TEXT,role TEXT,content TEXT,created REAL);
             CREATE TABLE IF NOT EXISTS qa(id TEXT PRIMARY KEY,asset_id TEXT,model TEXT,body TEXT,created REAL);
+            CREATE TABLE IF NOT EXISTS asset_selections(scene_id TEXT,kind TEXT,asset_id TEXT,input_signature TEXT,PRIMARY KEY(scene_id,kind));
+            CREATE INDEX IF NOT EXISTS scenes_project ON scenes(project_id,position);
+            CREATE INDEX IF NOT EXISTS jobs_status ON jobs(status,priority,created);
+            CREATE INDEX IF NOT EXISTS jobs_scene_kind ON jobs(scene_id,kind);
+            CREATE INDEX IF NOT EXISTS assets_project ON assets(project_id,created);
+            CREATE INDEX IF NOT EXISTS assets_scene ON assets(scene_id,created);
+            CREATE INDEX IF NOT EXISTS qa_asset ON qa(asset_id,created);
             INSERT OR IGNORE INTO migrations VALUES(1,strftime('%s','now'));
             ''')
+            if 'cancel_requested' not in {row[1] for row in con.execute('PRAGMA table_info(jobs)')}:
+                con.execute('ALTER TABLE jobs ADD COLUMN cancel_requested INTEGER DEFAULT 0')
 
     def all(self, sql, args=()):
         with self.connect() as con:
@@ -121,9 +130,12 @@ class Store:
 
     def scenes(self, project_id):
         rows = self.all('SELECT * FROM scenes WHERE project_id=? ORDER BY position,created', (project_id,))
+        assets=self.assets(project_id=project_id)
+        grouped={}
+        for asset in assets:grouped.setdefault(asset['scene_id'],[]).append(asset)
         for row in rows:
             row['body'] = json.loads(row['body'])
-            row['assets'] = self.assets(row['id'])
+            row['assets'] = grouped.get(row['id'],[])
         return rows
 
     def scene(self, identifier):

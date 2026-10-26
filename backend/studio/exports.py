@@ -23,11 +23,14 @@ def rebuild_timeline(project_id,partial=False):
             raise ValueError('A selected take no longer belongs to its scene.')
         metadata=json.loads(asset['metadata'])
         clips.append({'id':uid(),'scene_id':scene['id'],'asset_id':asset['id'],'trim_in':0,'trim_out':metadata['duration'],'speed':1,'volume':1,'mute':False,'transition':'inherit'})
+        if not metadata.get('audio_streams') and asset['job_id']:
+            audio=db.one("SELECT id FROM assets WHERE job_id=? AND scene_id=? AND kind='audio' ORDER BY created LIMIT 1",(asset['job_id'],scene['id']))
+            if audio:clips[-1]['audio_asset_id']=audio['id']
     timeline=project['timeline']
-    return save_timeline(project_id,timeline['revision'],clips,timeline.get('audio',[]),{**timeline['settings'],'partial':len(clips)<len(project['scenes'])})
+    return save_timeline(project_id,timeline['revision'],clips,timeline.get('audio',[]),{**timeline['settings'],'partial':len(clips)<sum(not s['body'].get('disabled') for s in project['scenes'])},automatic=True)
 
 
-def save_timeline(project_id,revision,clips,audio,settings):
+def save_timeline(project_id,revision,clips,audio,settings,automatic=False):
     if not 0 < len(clips) <= 200:
         raise ValueError('A timeline needs between one and 200 clips.')
     if len({c.get('id') for c in clips})!=len(clips) or any(not isinstance(c.get('id'),str) for c in clips):
@@ -43,6 +46,8 @@ def save_timeline(project_id,revision,clips,audio,settings):
             raise ValueError('Clip trims or playback speed are outside the source duration.')
         if clip.get('transition','inherit') not in ['inherit','cut','fade','fade_black','dissolve'] or not math.isfinite(float(clip.get('volume',1))) or not 0<=float(clip.get('volume',1))<=4:
             raise ValueError('Invalid clip transition or volume.')
+        if clip.get('audio_asset_id') and not db.one("SELECT id FROM assets WHERE id=? AND project_id=? AND scene_id=? AND kind='audio' AND job_id=?",(clip['audio_asset_id'],project_id,clip['scene_id'],asset['job_id'])):
+            raise ValueError('A generated audio sidecar must share the clip’s exact scene and job.')
     if len(audio)>20:
         raise ValueError('Use at most twenty imported audio tracks.')
     for track in audio:
@@ -71,6 +76,8 @@ def save_timeline(project_id,revision,clips,audio,settings):
             raise Conflict('The timeline changed in another view. Refresh before saving.')
         con.execute('CREATE TABLE IF NOT EXISTS timeline_revisions(project_id TEXT,revision INTEGER,body TEXT,created REAL,PRIMARY KEY(project_id,revision))')
         previous=con.execute('SELECT body FROM timelines WHERE project_id=?',(project_id,)).fetchone()
+        old=json.loads(previous['body'])
+        body['settings']={**settings,'manual_edit':False if automatic else bool(old['settings'].get('manual_edit') or old['clips']!=clips)}
         con.execute('INSERT OR IGNORE INTO timeline_revisions VALUES(?,?,?,?)',(project_id,revision,previous['body'],now()))
         con.execute('INSERT INTO timeline_revisions VALUES(?,?,?,?)',(project_id,revision+1,encode(body),now()))
         con.execute('UPDATE timelines SET revision=revision+1,body=?,updated=? WHERE project_id=?',(encode(body),now(),project_id))
@@ -91,6 +98,10 @@ def queue_export(project_id,automatic=False):
         if asset['project_id']!=project_id:
             raise ValueError('Export assets must belong to this project.')
         clip['source_sha256']=asset['sha256']
+        if clip.get('audio_asset_id'):
+            audio=db.one("SELECT sha256 FROM assets WHERE id=? AND project_id=? AND kind='audio'",(clip['audio_asset_id'],project_id))
+            if not audio:raise ValueError('The generated audio sidecar is missing.')
+            clip['audio_source_sha256']=audio['sha256']
     pause(project_id,False)
     return queue_snapshot('export',frozen,automatic=automatic)
 

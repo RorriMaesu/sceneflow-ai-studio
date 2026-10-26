@@ -6,7 +6,7 @@ import shutil
 import zipfile
 from pathlib import Path,PureWindowsPath
 
-from .config import ROOT
+from .config import ROOT,settings
 from .media import asset_path,managed_path,verify
 from .store import db,encode,now,uid
 
@@ -57,6 +57,8 @@ def restore_bundle(path):
         if len(entries)>15000 or sum(e.file_size for e in entries)>10*1024**3:
             raise ValueError('The bundle exceeds the supported 10 GB or 15,000-file restore limit.')
         names=[e.filename for e in entries]
+        if shutil.disk_usage(ROOT).free<sum(e.file_size for e in entries)+settings['disk_reserve_gb']*1024**3:
+            raise ValueError('Not enough project-drive space to restore this bundle and keep the storage reserve.')
         if len(names)!=len(set(names)):raise ValueError('Duplicate filenames in bundle.')
         for entry in entries:
             name=entry.filename
@@ -86,16 +88,30 @@ def restore_bundle(path):
                 with archive.open(name) as source,destination.open('wb') as target:shutil.copyfileobj(source,target,1024*1024)
                 with destination.open('rb') as file:digest=hashlib.file_digest(file,'sha256').hexdigest()
                 if digest!=asset['sha256']:raise ValueError('A bundled media hash failed validation.')
-                verify(destination,asset['kind']);asset['path']=str(relative);asset.pop('bundle_path')
+                if asset['kind'] not in ['image','video','audio','export']:raise ValueError('Unsupported bundled asset type.')
+                measured=verify(destination,asset['kind']);asset['metadata']=encode({**json.loads(asset['metadata']),**measured});asset['path']=str(relative);asset.pop('bundle_path')
             # Validate all ownership and references before inserting any restored rows.
             scene_ids={r['id'] for r in tables['scenes']};asset_ids={r['id'] for r in tables['assets']}
+            asset_rows={r['id']:r for r in tables['assets']};revisions={r['id']:r for r in tables['scene_revisions']};job_ids={r['id'] for r in tables['jobs']}
+            if any(r['scene_id'] not in scene_ids for r in revisions.values()):raise ValueError('Cross-project creative revision in bundle.')
+            if any(r['scene_id'] and r['scene_id'] not in scene_ids for r in tables['jobs']):raise ValueError('Cross-project job in bundle.')
             for table in ['scenes','jobs','assets','chat']:
                 if any(r['project_id']!=original['id'] for r in tables[table]):raise ValueError('Cross-project rows in bundle.')
             for row in tables['assets']:
                 if row['scene_id'] and row['scene_id'] not in scene_ids:raise ValueError('Invalid media ownership in bundle.')
                 if row['source_asset_id'] and row['source_asset_id'] not in asset_ids:raise ValueError('Missing source asset in bundle.')
+                if row['source_asset_id'] and asset_rows[row['source_asset_id']]['scene_id']!=row['scene_id']:raise ValueError('A bundled source asset belongs to another scene.')
+                if row['job_id'] and row['job_id'] not in job_ids:raise ValueError('Missing bundled job provenance.')
             for row in tables['scenes']:
                 if any(row.get(k) and row[k] not in asset_ids for k in ['selected_image_id','selected_video_id']):raise ValueError('Missing selected take in bundle.')
+                if row['revision_id'] not in revisions or revisions[row['revision_id']]['scene_id']!=row['id']:raise ValueError('Scene revision ownership does not match.')
+                for field,kind in [('selected_image_id','image'),('selected_video_id','video')]:
+                    if row.get(field) and (asset_rows[row[field]]['scene_id']!=row['id'] or asset_rows[row[field]]['kind']!=kind):raise ValueError('Selected take ownership does not match.')
+            timeline=json.loads(manifest['timeline']['body'])
+            for clip in timeline['clips']:
+                if clip['asset_id'] not in asset_rows or asset_rows[clip['asset_id']]['scene_id']!=clip['scene_id']:raise ValueError('Timeline references media outside this bundled scene.')
+            for track in timeline.get('audio',[]):
+                if track['asset_id'] not in asset_rows or asset_rows[track['asset_id']]['kind']!='audio':raise ValueError('Timeline references audio outside this bundle.')
             project=remap(original,mapping);project.update(title=project['title']+' · Restored',mode='hybrid',revision=1,archived=0,created=now(),updated=now())
             config=remap(json.loads(project['settings']),mapping);config.update(paused=True,qa_enabled=False,planning_approved={});project['settings']=encode(config)
             with db.connect(True) as con:
@@ -122,4 +138,8 @@ def restore_bundle(path):
             root.rename(quarantine)
             raise
     db.event('backup.restored',{'project_id':project_id})
+    from .media import select_asset
+    for scene in db.scenes(project_id):
+        for field in ['selected_image_id','selected_video_id']:
+            if scene[field]:select_asset(scene[field])
     return db.project(project_id)

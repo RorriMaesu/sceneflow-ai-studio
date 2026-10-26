@@ -69,9 +69,10 @@ def migrate():
 
 def context(project,selected=None):
     # A compact scene index preserves identity without sending every full prompt.
-    index=[{'id':s['id'],'revision':s['revision'],'title':s['title'],'summary':s['body'].get('summary','')[:160]} for s in project['scenes'][:100]]
+    ordered=sorted(project['scenes'],key=lambda s:s['id']!=selected)
+    index=[{'id':s['id'],'revision':s['revision'],'title':s['title'][:80],'summary':s['body'].get('summary','')[:70]} for s in ordered[:40]]
     detailed=[s for s in project['scenes'] if s['id']==selected][:1]
-    return {'title':project['title'],'brief':project['brief'][:6000],'style_guide':project['settings'].get('style_guide','')[:2500],'characters':str(project['settings'].get('characters',[]))[:2000],'scene_index':index,'selected_scenes':[{'id':s['id'],'body':{k:str(v)[:1800] for k,v in s['body'].items() if k in ['summary','image_prompt','video_prompt']}} for s in detailed]}
+    return {'title':project['title'],'brief':project['brief'][:3000],'style_guide':project['settings'].get('style_guide','')[:1500],'characters':str(project['settings'].get('characters',[]))[:1000],'scene_index':index,'omitted_scenes':max(0,len(ordered)-40),'selected_scenes':[{'id':s['id'],'body':{k:str(v)[:1200] for k,v in s['body'].items() if k in ['summary','image_prompt','video_prompt']}} for s in detailed]}
 
 
 async def model_details(model,client=None):
@@ -94,7 +95,8 @@ async def model_details(model,client=None):
 async def llm_models():
     async with httpx.AsyncClient(timeout=20) as c:
         response=await c.get(settings['ollama_url']+'/api/tags');response.raise_for_status()
-        return await asyncio.gather(*(model_details(m['name'],c) for m in response.json().get('models',[])))
+        results=await asyncio.gather(*(model_details(m['name'],c) for m in response.json().get('models',[])),return_exceptions=True)
+        return [result for result in results if isinstance(result,dict)]
 
 
 async def prepare_gpu(client,model):
@@ -130,7 +132,7 @@ async def prepare_gpu(client,model):
 async def structured(client,model,messages,schema,options=None):
     conversation=list(messages)
     for attempt in range(2):
-        response=await client.post(settings['ollama_url']+'/api/chat',json={'model':model,'messages':conversation,'format':schema.model_json_schema(),'stream':False,'think':False,'keep_alive':'5m','options':{'temperature':.55,'num_ctx':8192,'num_predict':6000,**(options or {})}},timeout=600)
+        response=await client.post(settings['ollama_url']+'/api/chat',json={'model':model,'messages':conversation,'format':schema.model_json_schema(),'stream':False,'think':False,'keep_alive':'5m','options':{'temperature':.55,'num_ctx':12288,'num_predict':3500,**(options or {})}},timeout=600)
         response.raise_for_status()
         value=response.json().get('message',{}).get('content','')
         try:

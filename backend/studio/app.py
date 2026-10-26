@@ -15,6 +15,7 @@ from .config import ALLOWED_ORIGINS, PHASE, PORT, ROOT, VERSION, rotate_pair_cod
 from .resources import resources, services
 from .security import check_origin, pair, require_session, ticket, verify_ticket
 from .store import Conflict, db
+from .validation import project_settings,scene_body
 
 log = logging.getLogger('studio')
 
@@ -40,6 +41,8 @@ async def guard(request, call_next):
         check_origin(request.headers.get('origin'))
     except HTTPException as error:
         return JSONResponse({'detail': error.detail}, status_code=error.status_code)
+    if request.headers.get('content-type','').startswith('application/json') and int(request.headers.get('content-length') or 0)>3*1024**2:
+        return JSONResponse({'detail':'This JSON request exceeds 3 MB.'},status_code=413)
     response = await call_next(request)
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['Referrer-Policy'] = 'no-referrer'
@@ -61,6 +64,11 @@ async def missing_handler(request, error):
 @app.exception_handler(ValueError)
 async def validation_handler(request,error):
     return JSONResponse({'detail':str(error)},status_code=422)
+
+
+@app.exception_handler(FileNotFoundError)
+async def missing_file_handler(request,error):
+    return JSONResponse({'detail':'This project media file is missing. Restore a backup or import a replacement.'},status_code=404)
 
 
 class Strict(BaseModel):
@@ -103,6 +111,13 @@ async def health():
     return {'service': 'SceneFlow Studio Agent', 'version': VERSION, 'phase': PHASE, 'pairing_required': True}
 
 
+def validate_workflows(values):
+    from .adapters import registry
+    for field in ['image_workflow','video_workflow']:
+        if values.get(field) and registry.get(values[field])['status']!='ready':
+            raise ValueError('Choose an available workflow from the Model Library.')
+
+
 @app.post('/api/pair')
 async def pairing(body: PairInput, request: Request):
     return pair(body.code, request.headers.get('origin'), body.label, request.client.host)
@@ -129,6 +144,12 @@ async def resource_status(session=Depends(require_session)):
     return resources()
 
 
+@app.get('/api/diagnostics')
+async def diagnostic_report(session=Depends(require_session)):
+    from .diagnostics import diagnostics
+    return await diagnostics()
+
+
 @app.get('/api/services')
 async def service_status(session=Depends(require_session)):
     return await services(True)
@@ -141,30 +162,56 @@ async def project_list(session=Depends(require_session)):
 
 @app.post('/api/projects')
 async def create_project(body: ProjectInput, session=Depends(require_session)):
+    project_settings(body.settings)
+    validate_workflows(body.settings)
     return db.create_project(**body.model_dump())
 
 
 @app.get('/api/projects/{identifier}')
 async def project(identifier: str, session=Depends(require_session)):
-    return db.project(identifier)
+    from .production import current_source,current_video
+    value=db.project(identifier)
+    for scene in value['scenes']:
+        scene['image_current']=bool(current_source(scene));scene['video_current']=bool(current_video(scene))
+    return value
 
 
 @app.patch('/api/projects/{identifier}')
 async def edit_project(identifier: str, body: ProjectEdit, session=Depends(require_session)):
+    if body.settings:
+        project_settings(body.settings)
+        validate_workflows(body.settings)
+        merged={**db.project(identifier)['settings'],**body.settings}
+        if merged.get('qa_enabled'):
+            from .director import model_details,llm_models
+            model=merged.get('qa_model')
+            if not model:raise ValueError('Select a verified installed vision model or Auto before enabling AI quality control.')
+            if model=='auto':
+                if not any('vision' in m['capabilities'] and not m.get('remote_host') for m in await llm_models()):raise ValueError('No installed local vision model is available. Manual review remains available.')
+            elif 'vision' not in (await model_details(model))['capabilities']:raise ValueError('This installed model does not advertise vision support.')
     result=db.update_project(identifier, body.revision, body.model_dump(exclude_none=True, exclude={'revision'}))
     if body.mode=='manual':
         from .production import pause
         pause(identifier,True)
+    elif body.mode=='automatic':
+        db.execute("UPDATE jobs SET status='queued',error=NULL WHERE project_id=? AND status='awaiting_review'",(identifier,))
+    if body.settings:
+        from .production import supersede_pending
+        for scene in result['scenes']:supersede_pending(scene['id'])
     return result
 
 
 @app.post('/api/projects/{identifier}/scenes')
 async def add_scene(identifier: str, body: SceneInput, session=Depends(require_session)):
+    scene_body(body.body)
+    validate_workflows(body.body)
     return db.add_scene(identifier, body.title, body.body)
 
 
 @app.patch('/api/scenes/{identifier}')
 async def edit_scene(identifier: str, body: SceneEdit, session=Depends(require_session)):
+    scene_body(body.body)
+    validate_workflows(body.body or {})
     result=db.update_scene(identifier, body.revision, body.title, body.body)
     from .production import supersede_pending
     supersede_pending(identifier)
@@ -197,10 +244,15 @@ async def assets(project_id: str | None = None, session=Depends(require_session)
 async def update_settings(values: dict, session=Depends(require_session)):
     if any(key not in settings for key in values):
         raise HTTPException(422, 'Unknown setting.')
+    if set(values)-{'comfy_url','ollama_url','vram_reserve_mb','disk_reserve_gb','memory_profile'}:
+        raise HTTPException(422,'Executable and storage paths are controlled by the local installation configuration.')
+    for key,low,high in [('vram_reserve_mb',512,8192),('disk_reserve_gb',1,500)]:
+        if key in values and (not isinstance(values[key],(int,float)) or not low<=values[key]<=high):raise ValueError('Resource reserves are outside supported bounds.')
+    if 'memory_profile' in values and values['memory_profile'] not in ['conservative','balanced','performance']:raise ValueError('Unknown resource profile.')
     for key in ['comfy_url', 'ollama_url']:
         if key in values:
             parsed = urlparse(values[key])
-            if parsed.scheme != 'http' or parsed.hostname not in ['127.0.0.1', 'localhost'] or parsed.username or parsed.password or parsed.path not in ['', '/']:
+            if parsed.scheme != 'http' or parsed.hostname not in ['127.0.0.1', 'localhost'] or parsed.username or parsed.password or parsed.path not in ['', '/'] or parsed.query or parsed.fragment:
                 raise HTTPException(422, 'AI service addresses must point to this computer over loopback HTTP.')
             values[key] = values[key].rstrip('/')
     save_settings(values)

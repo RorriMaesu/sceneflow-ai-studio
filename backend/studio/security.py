@@ -2,11 +2,12 @@ import hashlib
 import hmac
 import secrets
 import time
+import json
 from collections import defaultdict
 
 from fastapi import HTTPException, Request
 
-from .config import ALLOWED_ORIGINS, PORT, private, rotate_pair_code
+from .config import ALLOWED_ORIGINS, PORT, SECRET_FILE,private, rotate_pair_code
 from .store import db, now
 
 failures = defaultdict(list)
@@ -38,6 +39,10 @@ def require_session(request: Request):
 
 def pair(code, origin, label, client):
     check_origin(origin)
+    # The local launcher can rotate the one-use code while an existing agent runs.
+    if SECRET_FILE.exists():
+        current=json.loads(SECRET_FILE.read_text(encoding='utf-8'))
+        private.update(pair_code=current['pair_code'],pair_expires=current['pair_expires'])
     recent = [t for t in failures[client] if t > now()-60]
     failures[client] = recent
     if len(recent) >= 5:

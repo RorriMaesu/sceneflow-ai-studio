@@ -110,3 +110,37 @@ def test_bundle_path_escape_rejected_before_writing(editor):
         archive.writestr('../escape.txt','bad');archive.writestr('manifest.json','{}')
     with pytest.raises(ValueError,match='Unsafe'):m['bundles'].restore_bundle(attack)
     assert not (root/'escape.txt').exists()
+
+
+def test_sidecar_audio_follows_the_exact_clip_job(editor):
+    store,m,p,scenes,assets,root=editor
+    silent=root/'temp'/'source-silent.mp4'
+    m['media'].run_tool([shutil.which('ffmpeg'),'-y','-v','error','-i',str(m['media'].asset_path(assets[0]['id'])),'-an','-c:v','copy',str(silent)])
+    video=m['media'].add_asset(p['id'],scenes[0]['id'],None,'video',silent)
+    tone=root/'temp'/'source-audio.wav';m['media'].run_tool([shutil.which('ffmpeg'),'-y','-v','error','-f','lavfi','-i','sine=frequency=600:duration=2',str(tone)])
+    audio=m['media'].add_asset(p['id'],scenes[0]['id'],None,'audio',tone)
+    for asset in [video,audio]:store.execute('UPDATE assets SET job_id=? WHERE id=?',('exact-source-job',asset['id']))
+    clip={'id':uid(),'asset_id':video['id'],'audio_asset_id':audio['id'],'scene_id':scenes[0]['id'],'trim_in':.5,'trim_out':1.5,'speed':.5}
+    config={'width':320,'height':180,'fps':12,'audio_mode':'preserve','transition':'cut','loop':'none','repeats':1}
+    m['exports'].save_timeline(p['id'],1,[clip],[],config)
+    asset,path,job=export(editor)
+    info=m['media'].probe(path)
+    assert info['audio_streams']==1 and abs(info['duration']-2)<.2
+
+
+def test_restart_stops_only_the_owned_export_worker(editor,monkeypatch):
+    import asyncio,os,psutil,subprocess
+    store,m,p,scenes,assets,root=editor
+    monkeypatch.setattr(importlib.import_module('studio.director'),'db',store)
+    job=m['production'].queue_snapshot('export',{'project_id':p['id'],'title':'Frozen export'})
+    m['production'].update_job(job['id'],'running')
+    directory=root/'temp'/('export-'+job['id']);directory.mkdir()
+    binary=shutil.which('ffmpeg');process=subprocess.Popen([binary,'-y','-v','error','-re','-f','lavfi','-i','color=c=red:s=64x64:r=12','-t','60','-c:v','libx264','-threads','1',str(directory/'owned.mp4')],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,creationflags=0x08000000 if os.name=='nt' else 0)
+    (directory/'worker.json').write_text(encode({'pid':process.pid,'created':psutil.Process(process.pid).create_time(),'binary':str(__import__('pathlib').Path(binary).resolve())}),encoding='utf-8')
+    async def run():
+        dispatcher=m['production'].Dispatcher();await dispatcher.start();await dispatcher.stop()
+    try:
+        asyncio.run(run());process.wait(timeout=5)
+        assert store.one('SELECT status FROM jobs WHERE id=?',(job['id'],))['status']=='queued'
+    finally:
+        if process.poll() is None:process.kill();process.wait(timeout=5)

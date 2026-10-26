@@ -11,7 +11,7 @@ from studio.store import Store,encode,now,uid
 
 
 @pytest.fixture
-def engine(tmp_path,monkeypatch):
+def engine(tmp_path,monkeypatch,request):
     store=Store(tmp_path/'studio.sqlite')
     modules={name:importlib.import_module('studio.'+name) for name in ['production','adapters','media','exports']}
     for module in modules.values():
@@ -23,7 +23,8 @@ def engine(tmp_path,monkeypatch):
         entry['workflow_hash']=graph_hash(entry['graph'])
         store.execute('INSERT INTO workflow_registry VALUES(?,?,?)',(entry['id'],encode(entry),now()))
     project=store.create_project('Isolation test',mode='hybrid')
-    scenes=[store.add_scene(project['id'],'Scene '+str(i),{'image_prompt':'still '+str(i),'video_prompt':'motion '+str(i),'duration':3}) for i in range(20)]
+    count=20 if any(t in request.node.name for t in ['twenty_scene','duplicate_batch','manual_policy']) else 5 if 'live_edit' in request.node.name else 2
+    scenes=[store.add_scene(project['id'],'Scene '+str(i),{'image_prompt':'still '+str(i),'video_prompt':'motion '+str(i),'duration':3}) for i in range(count)]
     return store,modules,project,scenes
 
 
@@ -177,3 +178,106 @@ def test_twenty_scene_automatic_pipeline_preserves_every_source(engine):
         finish(job)
     assert store.one("SELECT COUNT(*) n FROM jobs WHERE status='completed'")['n']==40
     assert all(s['selected_image_id'] and s['selected_video_id'] for s in store.project(p['id'])['scenes'])
+
+
+def test_stage_invalidation_preserves_still_for_motion_edits(engine):
+    store,m,p,scenes=engine;scene=scenes[0]
+    still=m['production'].snapshot_for(scene,p,'image')
+    changed=store.update_scene(scene['id'],1,body={'video_prompt':'New motion only','duration':4})
+    assert m['production'].snapshot_is_current(still,changed,p,'image')
+    source={'id':uid(),'scene_id':scene['id'],'kind':'image','sha256':'hash'}
+    video=m['production'].snapshot_for(changed,p,'video',source)
+    changed['selected_image_id']=source['id']
+    assert m['production'].snapshot_is_current(video,changed,p,'video')
+    changed['body']['duration']=2
+    assert not m['production'].snapshot_is_current(video,changed,p,'video')
+    changed['body']['image_prompt']='A new composition'
+    assert not m['production'].snapshot_is_current(still,changed,p,'image')
+
+
+def test_foreign_comfy_work_is_observed_without_interrupt_or_free(engine,monkeypatch):
+    store,m,p,scenes=engine;calls=[]
+    monkeypatch.setattr(m['production'],'resources',lambda:{'disk_free':100*1024**3})
+    def handler(request):
+        calls.append((request.method,request.url.path));return httpx.Response(200,json={'queue_running':[[0,'foreign',{},{}]],'queue_pending':[]})
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await m['production'].Dispatcher().available(client,{})
+    assert 'outside this studio' in asyncio.run(run())
+    assert calls==[('GET','/queue')]
+
+
+def test_out_of_order_collection_and_partial_batch_recovery(engine):
+    import io
+    store,m,p,scenes=engine
+    store.update_project(p['id'],1,{'settings':{'width':64,'height':64}})
+    m['production'].produce(p['id'],'stills');jobs=store.all('SELECT * FROM jobs ORDER BY created')
+    images={}
+    for name,color in [('a.png','red'),('b.png','blue'),('b2.png','green')]:
+        buffer=io.BytesIO();Image.new('RGB',(64,64),color).save(buffer,format='PNG');images[name]=buffer.getvalue()
+    def handler(request):return httpx.Response(200,content=images[request.url.params['filename']])
+    def result(names):return {'outputs':{'save':{'images':[{'filename':name,'subfolder':'sceneflow/exact','type':'output'} for name in names]}}}
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            b={**jobs[1],'comfy_prompt_id':'backend-b'};a={**jobs[0],'comfy_prompt_id':'backend-a'}
+            entry=json.loads(b['snapshot'])['workflow_definition']
+            first=await m['media'].collect_outputs(client,b,result(['b.png']),entry)
+            full=await m['media'].collect_outputs(client,b,result(['b.png','b2.png']),entry)
+            again=await m['media'].collect_outputs(client,b,result(['b.png','b2.png']),entry)
+            only_a=await m['media'].collect_outputs(client,a,result(['a.png']),entry)
+            assert len(first)==1 and len(full)==len(again)==2 and len(only_a)==1
+            assert {x['id'] for x in full}=={x['id'] for x in again}
+            assert all(x['scene_id']==b['scene_id'] for x in full) and only_a[0]['scene_id']==a['scene_id']
+            with Image.open(m['media'].asset_path(only_a[0]['id'])) as image:assert image.getpixel((32,32))==(255,0,0)
+    asyncio.run(run())
+
+
+def test_individual_generation_preserves_background_automatic_run(engine):
+    store,m,p,scenes=engine;m['production'].produce(p['id'],'all')
+    assert m['production'].state(p['id'])['auto_run']==1
+    m['production'].produce(p['id'],'selected_still',scenes[0]['id'])
+    assert m['production'].state(p['id'])['auto_run']==1
+
+
+def test_failed_bulk_job_can_be_explicitly_replanned_without_unique_key_error(engine):
+    store,m,p,scenes=engine;m['production'].produce(p['id'],'stills')
+    old=store.one('SELECT * FROM jobs WHERE scene_id=?',(scenes[0]['id'],));m['production'].update_job(old['id'],'failed')
+    m['production'].produce(p['id'],'stills')
+    jobs=store.all('SELECT * FROM jobs WHERE scene_id=?',(scenes[0]['id'],))
+    assert len(jobs)==2 and len({j['request_key'] for j in jobs})==2
+
+
+def test_automatic_resume_reuses_completed_manual_still(engine):
+    store,m,p,scenes=engine
+    manual=store.update_project(p['id'],1,{'mode':'manual','settings':{'auto_export':False}})
+    m['production'].produce(p['id'],'selected_still',scenes[0]['id'])
+    job=store.one('SELECT * FROM jobs WHERE scene_id=?',(scenes[0]['id'],));aid=uid();relative='projects/'+p['id']+'/'+aid+'.png';path=m['media'].ROOT/relative;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(b'fixture')
+    store.execute('INSERT INTO assets(id,project_id,scene_id,job_id,kind,path,sha256,metadata) VALUES(?,?,?,?,?,?,?,?)',(aid,p['id'],scenes[0]['id'],job['id'],'image',relative,'hash','{}'))
+    asyncio.run(m['production'].Dispatcher().complete(job,[store.one('SELECT * FROM assets WHERE id=?',(aid,))]))
+    assert not store.scene(scenes[0]['id'])['selected_image_id']
+    store.update_project(p['id'],manual['revision'],{'mode':'automatic'})
+    asyncio.run(m['production'].Dispatcher().reuse_completed(p['id']));m['production'].produce(p['id'],'all')
+    assert store.scene(scenes[0]['id'])['selected_image_id']==aid
+    assert store.one("SELECT COUNT(*) n FROM jobs WHERE scene_id=? AND kind='image'",(scenes[0]['id'],))['n']==1
+    assert store.one("SELECT COUNT(*) n FROM jobs WHERE scene_id=? AND kind='video'",(scenes[0]['id'],))['n']==1
+
+
+def test_image_review_gate_cannot_be_bypassed_by_reclicking_auto_produce(engine):
+    store,m,p,scenes=engine;aid=uid();relative='projects/'+p['id']+'/'+aid+'.png';path=m['media'].ROOT/relative;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(b'fixture')
+    store.execute('INSERT INTO assets(id,project_id,scene_id,kind,path,sha256,metadata) VALUES(?,?,?,?,?,?,?)',(aid,p['id'],scenes[0]['id'],'image',relative,'hash','{}'))
+    store.execute('UPDATE scenes SET selected_image_id=? WHERE id=?',(aid,scenes[0]['id']))
+    m['production'].produce(p['id'],'all')
+    video=store.one("SELECT * FROM jobs WHERE scene_id=? AND kind='video'",(scenes[0]['id'],))
+    assert video['status']=='awaiting_review'
+    m['production'].approve_and_continue(aid)
+    assert store.one('SELECT status FROM jobs WHERE id=?',(video['id'],))['status']=='queued'
+    assert store.one("SELECT COUNT(*) n FROM jobs WHERE scene_id=? AND kind='video'",(scenes[0]['id'],))['n']==1
+
+
+def test_imported_media_inputs_require_explicit_owned_source_mapping():
+    from studio.adapters import validate_media_mappings
+    entry={'task':'image_to_video','graph':{'source':{'class_type':'LoadImage','inputs':{'image':'shared.png'}}},'mappings':{'source_image':{'node':'source','input':'image'}}}
+    assert validate_media_mappings(entry)==[]
+    assert validate_media_mappings({**entry,'task':'text_to_image'})
+    assert validate_media_mappings({**entry,'mappings':{}})
+    assert validate_media_mappings({**entry,'graph':{**entry['graph'],'audio':{'class_type':'LoadAudio','inputs':{}}}})

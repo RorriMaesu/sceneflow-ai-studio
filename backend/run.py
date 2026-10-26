@@ -20,6 +20,7 @@ if __name__ == '__main__':
     handler=logging.StreamHandler()
     handler.setFormatter(JsonLog())
     logging.basicConfig(level=logging.INFO,handlers=[handler],force=True)
+    logging.getLogger('httpx').setLevel(logging.WARNING)
     lock=(ROOT/'database'/'agent.lock').open('a+b')
     try:
         if os.name=='nt':

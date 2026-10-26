@@ -7,7 +7,7 @@
 }
 :root {
   font-family:
-    "DM Sans",
+    Manrope,
     Segoe UI,
     sans-serif;
   color: #e9e9ef;
@@ -206,7 +206,7 @@ hr,
 }
 .brand-sub {
   display: block;
-  font-family: "DM Sans", sans-serif;
+  font-family: Manrope, sans-serif;
   font-size: 8px;
   letter-spacing: 3px;
   font-weight: 550;
@@ -2087,6 +2087,78 @@ main {
   }
 }
 
-.production-settings {margin-bottom:24px}.production-settings summary{cursor:pointer;font-weight:650}.settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin:20px 0}.settings-grid label{display:grid;gap:8px}.production-settings .button-row{flex-wrap:wrap;margin-top:16px}.production-settings input[type=checkbox]{width:auto;margin-right:6px}.director-answer p{white-space:pre-wrap}
+.production-settings {
+  margin-bottom: 24px;
+}
+.production-settings summary {
+  cursor: pointer;
+  font-weight: 650;
+}
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin: 20px 0;
+}
+.settings-grid label {
+  display: grid;
+  gap: 8px;
+}
+.production-settings .button-row {
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+.production-settings input[type="checkbox"] {
+  width: auto;
+  margin-right: 6px;
+}
+.director-answer p {
+  white-space: pre-wrap;
+}
 
-.edit-strip{display:flex;gap:16px;overflow:auto;padding:16px 0}.edit-clip{background:var(--bg-elevated,#191921);padding:16px;border:1px solid #34323e;border-radius:14px;max-width:500px}.edit-clip video{width:100%;height:auto;border-radius:8px;margin:12px 0}.edit-clip .settings-grid{grid-template-columns:1fr 1fr}.timeline-editor details{margin:20px 0}.timeline-editor summary{cursor:pointer;font-weight:650}.audio-edit{padding:16px;border-bottom:1px solid #34323e}.audio-edit input[type=checkbox]{width:auto}.timeline-editor label{display:grid;gap:6px}.timeline-editor input[type=range]{max-width:240px}.settings-panel .upload-label input{max-width:230px}
+.edit-strip {
+  display: flex;
+  gap: 16px;
+  overflow: auto;
+  padding: 16px 0;
+}
+.edit-clip {
+  background: var(--bg-elevated, #191921);
+  padding: 16px;
+  border: 1px solid #34323e;
+  border-radius: 14px;
+  max-width: 500px;
+}
+.edit-clip video {
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 12px 0;
+}
+.edit-clip .settings-grid {
+  grid-template-columns: 1fr 1fr;
+}
+.timeline-editor details {
+  margin: 20px 0;
+}
+.timeline-editor summary {
+  cursor: pointer;
+  font-weight: 650;
+}
+.audio-edit {
+  padding: 16px;
+  border-bottom: 1px solid #34323e;
+}
+.audio-edit input[type="checkbox"] {
+  width: auto;
+}
+.timeline-editor label {
+  display: grid;
+  gap: 6px;
+}
+.timeline-editor input[type="range"] {
+  max-width: 240px;
+}
+.settings-panel .upload-label input {
+  max-width: 230px;
+}

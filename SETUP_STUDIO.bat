@@ -9,7 +9,7 @@ set "PIP_CACHE_DIR=%~dp0cache\pip"
 set "npm_config_cache=%~dp0cache\npm"
 if not exist .venv\Scripts\python.exe py -3.11 -m venv .venv
 if errorlevel 1 goto error
-.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+.venv\Scripts\python.exe -m pip install -r backend\requirements-lock.txt
 if errorlevel 1 goto error
 pushd frontend
 call npm ci

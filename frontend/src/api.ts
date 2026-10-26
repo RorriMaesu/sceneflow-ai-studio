@@ -34,14 +34,13 @@ export async function request<T = any>(
   method?: string,
 ): Promise<T> {
   const { url, token } = useConnection.getState();
-  const options: RequestInit & { targetAddressSpace?: string } = {
+  const options: RequestInit = {
     method: method || (body === undefined ? "GET" : "POST"),
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    targetAddressSpace: "loopback",
   };
   let response: Response;
   try {
@@ -75,8 +74,7 @@ export async function upload(path: string, file: File) {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     body: data,
-    targetAddressSpace: "loopback",
-  } as RequestInit);
+  });
   const value = await response.json();
   if (!response.ok) throw new Error(value.detail);
   return value;

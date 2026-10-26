@@ -24,6 +24,8 @@ export interface Scene {
   selected_image_id: string | null;
   selected_video_id: string | null;
   assets: Asset[];
+  image_current?: boolean;
+  video_current?: boolean;
 }
 export interface Project {
   id: string;
@@ -44,6 +46,7 @@ export interface Job {
   kind: string;
   status: string;
   progress: number;
+  comfy_prompt_id?: string | null;
   snapshot: Record<string, any>;
   error: string | null;
   created: number;

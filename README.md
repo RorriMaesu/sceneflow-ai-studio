@@ -1,28 +1,79 @@
 # SceneFlow AI Studio
 
-A local AI filmmaking studio: plan scenes, create starting stills, animate their exact images, review takes, and assemble a movie. The public interface is hosted on GitHub Pages; all private data and computation remain in a loopback Windows agent.
+A local filmmaking studio for planning scenes, generating starting stills, animating their exact images, reviewing takes and assembling a movie. The public React interface connects to an authenticated Windows agent on your computer.
 
-**Current release: Phase 2 — Image-first production.** Project/scene persistence, safe revisions, secure pairing, real local model discovery, Qwen still generation, Wan animation from the exact selected still, durable background jobs, candidate review, a basic timeline and verified silent MP4 exports are implemented. AI Director, richer editing and optional vision QA arrive in subsequent phases and remain unavailable until enabled and verified.
+**Release 0.5 — five functional build phases.** Includes local Ollama direction, Qwen Image generation, Wan 2.2 animation, three production modes, durable jobs, live edits, optional visual QA, timeline editing, imported sound, validated exports and portable backups.
 
-See the [verification ledger](docs/EVIDENCE.md) for actual tests and known limits. A real still → video → validated 1080p preview export has completed through the UI. This does not yet establish completion of all planned production features.
+- [Published interface](https://rorrimaesu.github.io/sceneflow-ai-studio/)
+- [Verification ledger](docs/EVIDENCE.md)
+- [Optimized build plan](docs/BUILD_PLAN.md)
+- [Requirements coverage](docs/REQUIREMENTS.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
 
-See [the optimized build plan](docs/BUILD_PLAN.md) for architecture, invariants, phases and acceptance criteria.
+The completed local proof includes an eight-scene, 26.533333-second H.264 movie: 1920×1080, 30 fps, 796 decoded frames, silent, with a fade-through-black loop boundary. Source animation was generated at 640×352 and scaled during assembly. Private movies and production data are excluded from Git.
 
-## Install locally
+## Open this installation
 
-1. Keep this checkout at `M:\AI-Video-Studio` (or another drive with adequate space).
-2. Install Python 3.11 and Node.js 22+ if not already available. The app never changes ComfyUI's Python.
-3. Run `SETUP_STUDIO.bat`, then `START_STUDIO.bat`.
-4. Open `http://127.0.0.1:8770` or the published Pages interface. Enter the pairing code printed by the launcher.
+Open `M:\AI-Video-Studio\START_STUDIO.bat`. It starts available local services, starts or reconnects the owned agent, creates a one-use pairing code and opens the private interface. Production continues after the browser closes. `STOP_STUDIO.bat` stops this agent; saved generation jobs can reconnect on the next launch.
 
-The agent binds only to `127.0.0.1:8770`. The launcher must remain running; the browser may close. A modern browser may ask permission to access the local agent. The same-origin local interface is the fallback if Pages connectivity is blocked.
+The Pages interface uses the same local data. Enter the launcher's code, or create one under **Settings → Create code for another browser**. Codes expire after ten minutes and are consumed once. Paired sessions last seven days and can be revoked in Settings.
 
-Data lives under `projects/`, `database/`, `config/`, `logs/`, `cache/`, `temp/` and `backups/`, all excluded from Git. Do not copy these directories into a public repository. Model files remain in the existing ComfyUI installation.
+## Install another checkout
+
+1. Put the source on a drive with sufficient space, such as `M:\AI-Video-Studio`.
+2. Install Python 3.11 and Node.js 24. Run `SETUP_STUDIO.bat` to create the isolated environment, install pinned dependencies and build the interface.
+3. Keep the existing ComfyUI installation and models. Default services are `http://127.0.0.1:8188` and local Ollama at `http://127.0.0.1:11434`.
+4. Put portable `ffmpeg.exe` and `ffprobe.exe` under `tools/ffmpeg/`. This machine has the verified FFmpeg 9.0.2 essentials bundle from the Windows builds linked by [FFmpeg](https://ffmpeg.org/download.html). Tools and model weights are not bundled in Git.
+5. Run `START_STUDIO.bat`, pair the browser, refresh discovery in Model Library and choose installed models independently.
+
+The launcher uses process-local settings. Defaults recognize `M:\ComfyUI\run_nvidia_gpu.bat` and `M:\AiStudio\OllamaModels`. Other installations can set `comfy_launcher`, `ollama_models`, `auto_start_comfy` and `auto_start_ollama` in private `config/settings.json`. Existing services are reused. Setup preserves ComfyUI's Python, packages and models.
+
+A browser may ask for local-network permission. The agent-served interface at `http://127.0.0.1:8770` provides a same-origin fallback. Independent Edge/Chrome permission grant, deny and revoke cases remain unverified in this session because those browsers were unavailable to the test tools.
+
+## Production modes
+
+**Assisted / Hybrid** is the default. Review stills, video takes and the timeline at independent checkpoints. Other scenes can continue while a review waits. Storyboard and prompt reviews can also be enabled.
+
+**Autopilot / Automatic** plans empty projects when a planning model is selected, reuses compatible work, chooses technically valid takes according to its settings and assembles the movie after reviews are clear. Without visual QA, selection uses technical acceptance.
+
+**Manual** provides explicit planning, generation, selection and export commands. Mode changes retain revisions, attempts and assets. Active renders keep frozen inputs. Pending work is updated only for affected scenes and stages.
+
+Scene drafts stay in the browser until saved or discarded. Revision conflicts require a refresh. The Director presents typed proposals that apply atomically after review: scene creation, targeted prompt changes and style-guide edits. Operational controls remain explicit.
+
+## Editing and sound
+
+The timeline supports drag/button reordering, trims, speed, duplicate/split/remove, replacement takes, local undo/redo and saved-revision restoration. Playback order is independent of generation order. Exports freeze the timeline and verify source hashes.
+
+Sound can be discarded, preserved or mixed with imported music, voiceover and effects. Controls include placement, trims, volume, mute, fades and music ducking. Generated audio sidecars share the exact scene and job and are included once.
+
+Exports include H.264/H.265, pad/crop fitting, configurable size/frame rate, cuts/fades/dissolves, repeated loops and boundary blending. FFprobe and full decoding verify output. Loop blending cannot establish seamless scene continuity.
+
+## Optional visual QA
+
+**AI Quality Control starts off.** Its model is independent and must advertise local vision capability. Reviews can run automatically, manually, on selected candidates or on suspicious outputs.
+
+Video review uses first, middle and final samples. Technical measurements are separate from advisory visual scores. Samples cannot establish complete motion adherence or sound quality. The tested model returned conflicting high scores and regeneration advice; the interface flags contradictions for human review and prevents them from triggering regeneration.
+
+Quality retries require an actionable low-scoring failure, preserve earlier attempts, stop without improvement and are limited to two per stage. Manual approval takes precedence.
+
+## Workflow limits
+
+Verified native adapters: Qwen Image 2.1 INT8 and Wan 2.2 I2V A14B FP8 with the existing four-step Lightx2v LoRAs. The measured Studio baseline is 640×352 at 16 fps, up to 81 Wan frames. Registry limits do not guarantee that every larger preset fits memory.
+
+The advanced editor imports API-format workflows with validated mappings, installed nodes/model choices, output nodes and conservative limits. Every image loader must map to the registered source still. Static reference media, audio conditioning and unapproved node classes require a separately verified adapter.
+
+LTX synchronized generation, first/last-frame controls, masked editing, outpainting, neural upscaling and specialized video-editing models are not configured or verified here. The interface explains unavailable capabilities. Large models and custom nodes are never downloaded automatically.
+
+## Backup and restore
+
+Open a project, then **Settings → Back up selected project**. Bundles are saved under `backups/` and can be downloaded through authenticated, expiring links. They include metadata, revisions, job provenance and original media with hashes.
+
+Restore creates a separate paused project with fresh project/scene/job/asset IDs. It verifies media and rejects unsafe paths or cross-project references. Credentials, executables and global workflow registrations are not imported. Failed restores are quarantined under `backups/failed-restore-*`.
+
+Private directories include `projects/`, `database/`, `config/`, `models/`, `tools/`, `logs/`, `cache/`, `temp/`, `local/` and `backups/`. The agent binds only to loopback and uses exact origin/host checks, revocable sessions, one-use WebSocket tickets and asset-scoped expiring media links with Range support.
 
 ## Development
 
-Backend: `PYTHONPATH=backend python -m pytest backend/tests -q`.
+Use the isolated Python environment, `PYTHONPATH=backend` and a separate `STUDIO_ROOT`. Run `python -m pytest --rootdir=. --confcutdir=backend/tests -q`. FFmpeg/FFprobe are needed for media integration tests. Keep `TEMP` and `TMP` on the project drive.
 
-Frontend: `cd frontend`, `npm ci`, `npm run dev` or `npm run build`.
-
-The Pages workflow tests the backend, builds the frontend using relative asset paths, and deploys the static artifact. It never publishes local media or secrets.
+Frontend: `npm ci`, `npm run dev`, `npm run build` under `frontend/`. GitHub Actions installs locked dependencies, tests, builds the relative-path frontend and deploys only its static output to Pages.
