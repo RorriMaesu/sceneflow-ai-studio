@@ -216,7 +216,7 @@ async def events_ticket(session=Depends(require_session)):
 async def websocket(websocket: WebSocket):
     try:
         check_origin(websocket.headers.get('origin'))
-        verify_ticket(websocket.query_params.get('ticket', ''), 'events', origin=websocket.headers.get('origin'), consume=True)
+        authorization=verify_ticket(websocket.query_params.get('ticket', ''), 'events', origin=websocket.headers.get('origin'), consume=True)
     except HTTPException:
         await websocket.close(code=1008)
         return
@@ -224,6 +224,10 @@ async def websocket(websocket: WebSocket):
     cursor = int(websocket.query_params.get('after', '0'))
     try:
         while True:
+            from .store import now
+            if not db.one('SELECT hash FROM sessions WHERE hash=? AND expires>?',(authorization['session'],now())):
+                await websocket.close(code=1008)
+                return
             rows = db.all('SELECT * FROM events WHERE id>? ORDER BY id LIMIT 100', (cursor,))
             for row in rows:
                 row['data'] = json.loads(row['data'])
@@ -237,6 +241,8 @@ async def websocket(websocket: WebSocket):
 
 from .routes_production import router as production_router
 app.include_router(production_router)
+from .routes_director import router as director_router
+app.include_router(director_router)
 
 
 @app.get('/{path:path}')

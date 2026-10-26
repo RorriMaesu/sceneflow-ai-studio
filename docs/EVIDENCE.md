@@ -8,6 +8,8 @@
 
 ## Phase 2 — Image-first production
 
+- Published commit `8a5bb63`; GitHub Actions run `40391134319` passed tests, build and Pages deployment. The published HTTPS page displayed and played the authenticated local movie preview.
+
 - Twenty automated foundation/production tests passed locally. The production fixture includes twenty independent scenes, future-scene edits during a separate active job, immutable active inputs, duplicate batch prevention, source-still requirements, independent review gates, manual/automatic policy preservation, frozen mappings and unsafe output-path rejection.
 - A real UI-triggered Qwen Image 2.1 INT8 generation produced a decoded 640×352 PNG. ComfyUI reported 110.79 seconds.
 - That exact still was explicitly approved and selected in the UI. A real UI-triggered Wan 2.2 I2V-A14B FP8 job produced a 640×352 H.264 video, 81 decoded frames at 16 fps, duration 5.0625 seconds, no audio. The video asset records its source still ID and matching SHA-256 hash.
@@ -15,6 +17,15 @@
 - A partial preview was deliberately built from the one completed scene, leaving the other seven unfinished. FFmpeg 9.0.2 normalized the clip to 1920×1080, 30 fps, H.264; FFprobe and a full decode verified 152 frames, 5.066667 seconds and no audio. The export is explicitly labeled partial, not a completed eight-scene movie.
 - Private manifests, job IDs, prompts, source hashes, media and operational logs remain in the local installation and are excluded from this repository.
 
+## Phase 3 — Direction and automation
+
+- Twenty-six automated tests pass. Added typed proposal transactions, stale/foreign-scope rejection without partial edits, structured JSON correction limited to one retry, bounded Director context, and exact reconciliation of an accepted submission whose response was lost. Recovery tests assert that no second POST occurs.
+- A twenty-scene simulation completed forty image/video stages with distinct scene inputs, immutable snapshots and the correct source-still link for every video. This simulation uses placeholder assets and is a scheduler test, not a claim of forty real generations.
+- The actually installed `gemma4:12b` model produced and validated a two-scene plan through local Ollama. Studio applied it to an empty Automatic project, confirmed unloading the model, then generated two real Qwen stills and two real Wan animations, selected technically valid outputs and automatically exported the complete two-scene movie.
+- During the first real still render, the owned Studio agent was stopped and restarted. It reattached to the same ComfyUI prompt ID and collected its output; no replacement render was submitted.
+- During the first scene's real video render, the second scene's pending motion prompt was edited. Only that pending job was superseded. Its replacement preserved the selected still ID; the active job's saved inputs were byte-for-byte unchanged. Both scene videos and final assembly completed.
+- Added independent planning/image/video selectors, candidate count, editable Hybrid review gates, planning approval, pending priority/cancellation, frozen-input inspection, and one-use pairing code creation for another browser.
+
 ## Still required before completion
 
-Active-render restart reconciliation; accepted-before-response submission recovery; full AI Director planning and safe proposal application; automatic multi-scene production; optional vision QA and bounded regeneration; richer timeline/audio transitions; synthetic export-order tests; backup/restore; workflow import mappings; standalone Edge/Chrome local-network permission cases; final accessibility and release audit. Later phases will add evidence here rather than treating planned tests as passed.
+Optional vision QA and bounded regeneration; richer timeline/audio transitions; synthetic export-order tests; backup/restore; workflow import mappings; standalone Edge/Chrome local-network permission cases; final accessibility and release audit. Later phases will add evidence here rather than treating planned tests as passed.

@@ -67,6 +67,7 @@ import type {
   Workflow,
 } from "./types";
 import "./style.css";
+import { ProductionSettings } from "./production-settings";
 
 const client = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -179,8 +180,8 @@ function Media({
     queryFn: () =>
       request<{ url: string }>(`/api/assets/${asset!.id}/ticket`, {}),
     enabled: !!asset,
-    staleTime: 45000,
-    refetchInterval: 60000,
+    staleTime: 25 * 60 * 1000,
+    refetchInterval: 25 * 60 * 1000,
   });
   if (!asset || !data)
     return (
@@ -879,6 +880,7 @@ function Studio() {
                       </Button>
                     </div>
                   </div>
+                  {featurePhase >= 3 && <ProductionSettings key={project.id} project={project} workflows={models.data || []} models={data?.services.ollama.models || []} act={act} />}
                   {["Storyboard", "Image Studio", "Video Studio"].includes(
                     page,
                   ) ? (
@@ -1744,7 +1746,7 @@ function QueuePage({
               <div className="meter">
                 <span style={{ width: `${j.progress * 100}%` }} />
               </div>
-              <span>{Math.round(j.progress * 100)}%</span>
+              <span>{["image","video"].includes(j.kind) && j.status!=="completed" ? "Stage " : ""}{Math.round(j.progress * 100)}%</span>
             </div>
             <Button
               onClick={() =>
@@ -1758,6 +1760,8 @@ function QueuePage({
             >
               <RefreshCw size={14} />
             </Button>
+            {j.status === "queued" && <><Button title="Move to front of pending work" onClick={()=>act(()=>request(`/api/jobs/${j.id}/priority`,{priority:80}),"Pending job prioritized.")}><ArrowUp size={14}/></Button><Button title="Cancel pending job" onClick={()=>act(()=>request(`/api/jobs/${j.id}/cancel`,{}),"Pending job cancelled.")}><X size={14}/></Button></>}
+            <details><summary>Saved inputs</summary><pre style={{maxWidth:300,maxHeight:240,overflow:"auto",whiteSpace:"pre-wrap"}}>{JSON.stringify({scene:j.snapshot.scene_id,revision:j.snapshot.scene_revision,prompt:j.snapshot.positive_prompt,source:j.snapshot.source_asset_id,seed:j.snapshot.seed,workflow:j.snapshot.workflow_id},null,2)}</pre></details>
           </div>
         ))
       ) : (
@@ -1780,7 +1784,8 @@ function DirectorPage({
   act: any;
 }) {
   const [text, setText] = useState("");
-  const [answer, setAnswer] = useState("");
+  const history = useQuery<any>({queryKey:["director",project.id], queryFn:()=>request(`/api/projects/${project.id}/director`), refetchInterval:4000});
+  const [autoContinue,setAutoContinue] = useState(false);
   const [model, setModel] = useState(project.settings.llm || "");
   const [count, setCount] = useState(4);
   return (
@@ -1797,22 +1802,28 @@ function DirectorPage({
             moment. Your local AI works with your project’s creative context.
           </p>
         </div>
-        {answer && <div className="director-answer">{answer}</div>}
+        {history.data?.chat.map((m:any)=><div className="director-answer" key={m.id}><span className="tiny-label">{m.role === "user" ? "YOU" : "DIRECTOR"}</span><p style={{whiteSpace:"pre-wrap"}}>{m.content}</p></div>)}
+        {history.data?.proposals.filter((p:any)=>p.status==="pending").map((p:any)=><article className="panel" key={p.id}>
+          <h3>{p.kind === "plan" ? "Proposed storyboard" : "Proposed creative changes"}</h3>
+          <p>{p.body.synopsis || p.body.reply}</p>
+          <details><summary>Review every proposed change</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",maxHeight:400,overflowY:"auto"}}>{JSON.stringify(p.body,null,2)}</pre></details>
+          <div className="button-row"><Button primary onClick={()=>act(async()=>{await request(`/proposals/${p.id}/apply`.replace("/proposals","/api/proposals"),{});history.refetch();},"Creative changes saved as new revisions.")}>Apply reviewed proposal</Button><Button onClick={()=>act(async()=>{await request(`/api/proposals/${p.id}/dismiss`,{});history.refetch();},"Proposal dismissed.")}>Dismiss</Button></div>
+        </article>)}
         <form
           className="director-composer"
           onSubmit={(e) => {
             e.preventDefault();
             act(async () => {
-              const result = await request(
+              await request(
                 `/api/projects/${project.id}/director`,
                 { model, message: text },
               );
-              setAnswer(result.content);
               setText("");
-            }, "");
+              history.refetch();
+            }, "Director request queued. Follow progress in Generation Queue.");
           }}
         >
-          <textarea
+          <textarea aria-label="Message your Director"
             rows={4}
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -1832,7 +1843,7 @@ function DirectorPage({
               ))}
             </select>
             <Button
-              type="submit"
+              type="submit" aria-label="Send to Director"
               primary
               disabled={featurePhase < 3 || !model || !text}
             >
@@ -1870,6 +1881,8 @@ function DirectorPage({
                 request(`/api/projects/${project.id}/plan`, {
                   model,
                   scene_count: count,
+                  auto_apply: autoContinue,
+                  auto_continue: autoContinue,
                 }),
               "Planning queued for the next safe GPU window.",
             )
@@ -1878,6 +1891,7 @@ function DirectorPage({
           <WandSparkles size={16} />
           Plan storyboard
         </Button>
+        {project.mode === "automatic" && !project.scenes.length && <label><input type="checkbox" checked={autoContinue} onChange={e=>setAutoContinue(e.target.checked)}/> Apply the new plan and continue through production</label>}
         <p className="muted">
           The AI proposes a structured plan. You keep the final say.
         </p>
@@ -2212,6 +2226,7 @@ function SettingsPage({
   const [ollama, setOllama] = useState(
     data?.settings.ollama_url || "http://127.0.0.1:11434",
   );
+  const [pairCode,setPairCode] = useState("");
   return (
     <section className="settings-page">
       <span className="eyebrow">MAKE YOURSELF AT HOME</span>
@@ -2253,7 +2268,9 @@ function SettingsPage({
             <Link2 size={15} />
             Pair browser
           </Button>
+          <Button disabled={!data} onClick={()=>act(async()=>{const result=await request('/api/session/pair-code',{});setPairCode(result.code);},"New one-use code created; it expires in ten minutes.")}>Create code for another browser</Button>
         </div>
+        {pairCode && <p>One-use pairing code: <strong>{pairCode}</strong> · expires in 10 minutes</p>}
       </div>
       <div className="panel settings-panel">
         <h3>

@@ -100,8 +100,8 @@ async def approve(identifier:str,session=Depends(require_session)):
 @router.post('/assets/{identifier}/ticket')
 async def media_ticket(identifier:str,session=Depends(require_session)):
     asset_path(identifier)
-    value=ticket(session,'media',identifier,ttl=180)
-    return {'url':f'/api/media/{identifier}?ticket={value}','expires_in':180}
+    value=ticket(session,'media',identifier,ttl=1800)
+    return {'url':f'/api/media/{identifier}?ticket={value}','expires_in':1800}
 
 
 @router.get('/media/{identifier}')

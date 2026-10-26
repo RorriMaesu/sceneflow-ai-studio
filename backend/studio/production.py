@@ -82,6 +82,15 @@ def selected_source(scene):
     return db.one('SELECT * FROM assets WHERE id=? AND scene_id=? AND kind=?', (scene['selected_image_id'],scene['id'],'image')) if scene['selected_image_id'] else None
 
 
+def current_source(scene):
+    asset=selected_source(scene)
+    if not asset or not asset['job_id']:
+        return asset
+    row=db.one('SELECT snapshot FROM jobs WHERE id=?',(asset['job_id'],))
+    snap=json.loads(row['snapshot']) if row else {}
+    return asset if snap.get('positive_prompt')==scene['body'].get('image_prompt','') and snap.get('negative_prompt','')==scene['body'].get('negative_prompt','') else None
+
+
 def current_video(scene):
     asset = db.one('SELECT * FROM assets WHERE id=? AND source_asset_id=?', (scene['selected_video_id'],scene['selected_image_id'])) if scene['selected_video_id'] else None
     if not asset:
@@ -98,11 +107,16 @@ def produce(project_id, scope='all', scene_id=None):
     automatic = scope=='all' and project['mode']!='manual'
     plans = []
     for scene in scenes:
-        source = selected_source(scene)
+        source = current_source(scene) if scope=='all' else selected_source(scene)
         if scope in ['stills','selected_still'] or (scope=='all' and not source):
             snap = snapshot_for(scene,project,'image')
             snap['continue_video'] = automatic
-            plans.append(('image',snap))
+            count=int(project['settings'].get('candidates',1))
+            if not 1<=count<=4:
+                raise ValueError('Choose between one and four still candidates.')
+            for candidate in range(count):
+                variant=copy.deepcopy(snap);variant['seed']+=candidate;variant['candidate_index']=candidate
+                plans.append(('image',variant))
         elif scope in ['videos','selected_video'] or (scope=='all' and not current_video(scene)):
             plans.append(('video',snapshot_for(scene,project,'video',source)))
     # Validate every requested scene before adding any jobs.
@@ -110,13 +124,18 @@ def produce(project_id, scope='all', scene_id=None):
     with db.connect(True) as con:
         con.execute('UPDATE production_state SET paused=0,auto_run=? WHERE project_id=?',(int(automatic),project_id))
     jobs = [queue_snapshot(kind,snap,automatic=automatic,force=scope.startswith('selected'),priority=30 if scope.startswith('selected') else 0) for kind,snap in plans]
+    if automatic and project['mode']=='hybrid' and any(project['settings'].get('gates',{}).get(k) for k in ['storyboard','prompts']):
+        approved=project['settings'].get('planning_approved',{})
+        for job in jobs:
+            if approved.get(job['scene_id'])!=db.scene(job['scene_id'])['revision_id'] and job['status']=='queued':
+                update_job(job['id'],'awaiting_review',error='Review the storyboard and prompts, then approve planning to release this work.')
     return {'jobs':[j['id'] for j in jobs],'planned':len(jobs),'reused_scenes':len(scenes)-len(jobs)}
 
 
 def supersede_pending(scene_id):
     scene = db.scene(scene_id)
     project = db.project(scene['project_id'])
-    pending = db.all("SELECT * FROM jobs WHERE scene_id=? AND status='queued'",(scene_id,))
+    pending = db.all("SELECT * FROM jobs WHERE scene_id=? AND status IN ('queued','awaiting_review')",(scene_id,))
     for job in pending:
         old = json.loads(job['snapshot'])
         source = selected_source(scene) if job['kind']=='video' else None
@@ -124,11 +143,15 @@ def supersede_pending(scene_id):
             continue
         new = snapshot_for(scene,project,job['kind'],source,old['config'])
         new['continue_video'] = old.get('continue_video',False)
+        new['candidate_index']=old.get('candidate_index',0)
+        new['seed']+=new['candidate_index']
         # Preserve queued inputs unless a generation-relevant field changed.
         relevant = ['positive_prompt','negative_prompt','workflow_id','seed','source_asset_id','requested_duration']
         if any(old.get(k)!=new.get(k) for k in relevant):
-            db.execute("UPDATE jobs SET status='superseded',finished=? WHERE id=? AND status='queued'",(now(),job['id']))
-            queue_snapshot(job['kind'],new,automatic=old.get('automatic',False),priority=job['priority'])
+            db.execute("UPDATE jobs SET status='superseded',finished=? WHERE id=? AND status IN ('queued','awaiting_review')",(now(),job['id']))
+            replacement=queue_snapshot(job['kind'],new,automatic=old.get('automatic',False),priority=job['priority'])
+            if job['status']=='awaiting_review':
+                update_job(replacement['id'],'awaiting_review',error=job['error'])
 
 
 def approve_and_continue(asset_id):
@@ -159,7 +182,11 @@ class Dispatcher:
 
     async def start(self):
         migrate()
-        db.execute("UPDATE jobs SET status='reconciling',error='Agent restarted; checking the original backend submission.' WHERE status IN ('running','submitted')")
+        from .director import migrate as migrate_director
+        migrate_director()
+        db.execute("UPDATE jobs SET status='needs_attention',error='Agent restarted during a local AI request. Review any saved proposal before explicitly retrying.' WHERE status='running' AND kind IN ('plan','director','qa')")
+        db.execute("UPDATE jobs SET status='queued',error='Restarting the frozen export after agent recovery.' WHERE status='running' AND kind='export'")
+        db.execute("UPDATE jobs SET status='reconciling',error='Agent restarted; checking the original backend submission.' WHERE status IN ('running','submitted') AND kind IN ('image','video')")
         self.task = asyncio.create_task(self.loop())
 
     async def stop(self):
@@ -361,12 +388,13 @@ class Dispatcher:
         # Never let an old render silently replace a newly revised/selected scene.
         scene=db.scene(job['scene_id'])
         current=scene['revision_id']==snap['scene_revision_id']
-        if current and auto_approve:
+        already_selected=current_source(scene) if job['kind']=='image' else current_video(scene)
+        if current and auto_approve and not already_selected:
             select_asset(candidate['id'])
             db.execute('UPDATE assets SET approved=1,approval_source=? WHERE id=?',('automatic_first_technically_valid',candidate['id']))
         update_job(job['id'],'completed',progress=1,finished=now(),error=None)
         registry.verified(snap['workflow_id'],{'job_id':job['id'],'asset_id':candidate['id'],'metadata':json.loads(candidate['metadata'])})
-        if current and auto_approve and job['kind']=='image' and snap.get('continue_video') and state(project['id'])['auto_run']:
+        if current and auto_approve and not already_selected and job['kind']=='image' and snap.get('continue_video') and state(project['id'])['auto_run']:
             new_snap=snapshot_for(db.scene(scene['id']),project,'video',candidate,snap['config'])
             queue_snapshot('video',new_snap,automatic=True,dependencies=[job['id']])
         if job['kind']=='video' and auto_approve:
@@ -374,13 +402,18 @@ class Dispatcher:
 
     async def maybe_export(self,project_id):
         project=db.project(project_id)
-        if project['mode']=='automatic' and project['settings'].get('auto_export',True) and state(project_id)['auto_run'] and all(s['selected_video_id'] for s in project['scenes']):
+        gates=project['settings'].get('gates',{})
+        can_export=project['mode']=='automatic' or (project['mode']=='hybrid' and not gates.get('timeline',True))
+        if can_export and project['settings'].get('auto_export',True) and state(project_id)['auto_run'] and all(current_video(s) for s in project['scenes']):
             from .exports import rebuild_timeline, queue_export
             rebuild_timeline(project_id)
             queue_export(project_id,automatic=True)
 
     async def execute_other(self,job,snapshot):
-        if job['kind']=='export':
+        if job['kind'] in ['plan','director']:
+            from .director import execute_ai
+            await execute_ai(job,snapshot)
+        elif job['kind']=='export':
             from .exports import execute_export
             update_job(job['id'],'running',started=now())
             await asyncio.to_thread(execute_export,job,snapshot)
