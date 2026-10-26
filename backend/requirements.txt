@@ -1,0 +1,10 @@
+fastapi>=0.115,<1
+uvicorn>=0.34,<1
+httpx>=0.28,<1
+pydantic>=2.10,<3
+psutil>=7,<8
+pillow>=11,<13
+python-multipart>=0.0.20,<1
+nvidia-ml-py>=12,<14
+pytest>=8,<10
+websockets>=14,<17
