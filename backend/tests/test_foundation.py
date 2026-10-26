@@ -14,6 +14,10 @@ def connected(tmp_path, monkeypatch):
     store = Store(tmp_path / 'test.sqlite')
     monkeypatch.setattr(application, 'db', store)
     monkeypatch.setattr(security, 'db', store)
+    for name in ['production','media','exports','adapters','routes_production']:
+        module=importlib.import_module('studio.'+name)
+        monkeypatch.setattr(module,'db',store)
+    importlib.import_module('studio.production').migrate()
     security.failures.clear()
     client = TestClient(application.app, base_url='http://127.0.0.1:8770')
     origin = 'http://127.0.0.1:8770'

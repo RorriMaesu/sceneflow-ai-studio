@@ -21,7 +21,12 @@ log = logging.getLogger('studio')
 
 @asynccontextmanager
 async def lifespan(app):
-    yield
+    from .production import dispatcher
+    await dispatcher.start()
+    try:
+        yield
+    finally:
+        await dispatcher.stop()
 
 
 app = FastAPI(title='SceneFlow Studio Agent', version=VERSION, lifespan=lifespan, docs_url=None, redoc_url=None)
@@ -51,6 +56,11 @@ async def conflict_handler(request, error):
 @app.exception_handler(KeyError)
 async def missing_handler(request, error):
     return JSONResponse({'detail': str(error).strip("'")}, status_code=404)
+
+
+@app.exception_handler(ValueError)
+async def validation_handler(request,error):
+    return JSONResponse({'detail':str(error)},status_code=422)
 
 
 class Strict(BaseModel):
@@ -141,7 +151,11 @@ async def project(identifier: str, session=Depends(require_session)):
 
 @app.patch('/api/projects/{identifier}')
 async def edit_project(identifier: str, body: ProjectEdit, session=Depends(require_session)):
-    return db.update_project(identifier, body.revision, body.model_dump(exclude_none=True, exclude={'revision'}))
+    result=db.update_project(identifier, body.revision, body.model_dump(exclude_none=True, exclude={'revision'}))
+    if body.mode=='manual':
+        from .production import pause
+        pause(identifier,True)
+    return result
 
 
 @app.post('/api/projects/{identifier}/scenes')
@@ -151,7 +165,10 @@ async def add_scene(identifier: str, body: SceneInput, session=Depends(require_s
 
 @app.patch('/api/scenes/{identifier}')
 async def edit_scene(identifier: str, body: SceneEdit, session=Depends(require_session)):
-    return db.update_scene(identifier, body.revision, body.title, body.body)
+    result=db.update_scene(identifier, body.revision, body.title, body.body)
+    from .production import supersede_pending
+    supersede_pending(identifier)
+    return result
 
 
 @app.get('/api/scenes/{identifier}/revisions')
@@ -216,6 +233,10 @@ async def websocket(websocket: WebSocket):
             await asyncio.sleep(2)
     except (WebSocketDisconnect, RuntimeError):
         return
+
+
+from .routes_production import router as production_router
+app.include_router(production_router)
 
 
 @app.get('/{path:path}')

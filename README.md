@@ -2,7 +2,9 @@
 
 A local AI filmmaking studio: plan scenes, create starting stills, animate their exact images, review takes, and assemble a movie. The public interface is hosted on GitHub Pages; all private data and computation remain in a loopback Windows agent.
 
-**Current release: Phase 1 — Foundation.** Project creation, scene editing, optimistic revision checks, local persistence, secure browser pairing, actual hardware/service status and the responsive studio interface are implemented. Generation and editing integrations are delivered in subsequent phases and remain explicitly unavailable until enabled and verified.
+**Current release: Phase 2 — Image-first production.** Project/scene persistence, safe revisions, secure pairing, real local model discovery, Qwen still generation, Wan animation from the exact selected still, durable background jobs, candidate review, a basic timeline and verified silent MP4 exports are implemented. AI Director, richer editing and optional vision QA arrive in subsequent phases and remain unavailable until enabled and verified.
+
+See the [verification ledger](docs/EVIDENCE.md) for actual tests and known limits. A real still → video → validated 1080p preview export has completed through the UI. This does not yet establish completion of all planned production features.
 
 See [the optimized build plan](docs/BUILD_PLAN.md) for architecture, invariants, phases and acceptance criteria.
 
