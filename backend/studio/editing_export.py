@@ -99,17 +99,18 @@ def execute(job,snapshot):
     expected=elapsed
     loop=settings.get('loop','none')
     if loop in ['fade_black','crossfade']:
-        length=min(.5,expected/4);output=root/'loop.mp4'
+        length=max(1/fps,round(min(.5,expected/4)*fps)/fps);output=root/'loop.mp4'
         if loop=='fade_black':
             graph=f'[0:v]fade=t=in:d={length},fade=t=out:st={expected-length}:d={length}[v];[0:a]afade=t=in:d={length},afade=t=out:st={expected-length}:d={length}[a]'
         else:
             graph=f'[0:v]split=3[body][tail][head];[body]trim=start={length}:end={expected-length},setpts=PTS-STARTPTS[b];[tail]trim=start={expected-length},setpts=PTS-STARTPTS[t];[head]trim=end={length},setpts=PTS-STARTPTS[h];[t][h]xfade=transition=fade:duration={length}:offset=0[x];[b][x]concat=n=2:v=1:a=0[v];[0:a]asplit=3[ab][at][ah];[ab]atrim=start={length}:end={expected-length},asetpts=PTS-STARTPTS[ba];[at]atrim=start={expected-length},asetpts=PTS-STARTPTS[ta];[ah]atrim=end={length},asetpts=PTS-STARTPTS[ha];[ta][ha]acrossfade=d={length}[xa];[ba][xa]concat=n=2:v=0:a=1[a]'
             expected-=length
+        graph=graph.replace('[v]','[loopv]').replace('[a]','[loopa]')+f';[loopv]fps={fps},tpad=stop_mode=clone:stop_duration=1[v];[loopa]apad[a]'
         ffmpeg(['-i',str(movie),'-filter_complex',graph,'-map','[v]','-map','[a]','-t',str(expected),*encode_options(settings),str(output)]);movie=output
     repeats=int(settings.get('repeats',1))
     if repeats>1:
         output=root/'repeated.mp4';expected*=repeats
-        ffmpeg(['-stream_loop',str(repeats-1),'-i',str(movie),'-vf',f'fps={fps}','-af','aresample=48000:async=1:first_pts=0','-t',str(expected),*encode_options(settings),str(output)]);movie=output
+        ffmpeg(['-stream_loop',str(repeats-1),'-i',str(movie),'-vf',f'fps={fps},tpad=stop_mode=clone:stop_duration=1','-af','aresample=48000:async=1:first_pts=0,apad','-t',str(expected),*encode_options(settings),str(output)]);movie=output
     # Imported audio is mixed once after video assembly, so muxed clip audio is never doubled.
     tracks=timeline.get('audio',[]) if settings.get('audio_mode')=='mixed' else []
     if tracks:
@@ -140,6 +141,6 @@ def execute(job,snapshot):
         output=root/'silent.mp4';ffmpeg(['-i',str(movie),'-map','0:v:0','-an','-c:v','copy','-movflags','+faststart',str(output)]);movie=output
     validation=probe(movie)
     if validation['width']!=width or validation['height']!=height or abs(validation['fps']-fps)>.02 or abs(validation['duration']-expected)>max(.25,len(clips)/fps) or validation['audio_streams']!=(0 if silent else 1):
-        raise ValueError('Export failed resolution, frame-rate, duration, or audio validation.')
+        raise ValueError(f'Export validation failed: observed {validation}; expected {width}x{height}, {fps} fps, {expected:.6f} seconds, {0 if silent else 1} audio tracks.')
     partial=bool(settings.get('partial'))
     add_asset(job['project_id'],None,job['id'],'export',movie,extra={'title':('Partial preview · ' if partial else '')+snapshot['title'],'partial':partial,'timeline_revision':snapshot['timeline_revision'],'source_asset_ids':[c['asset_id'] for c in clips],'validation':'decoded_and_probed','expected_duration':expected,'export_settings':settings,'loop_note':'Crossfade blends the boundary; it cannot guarantee matching scene content.','audio_tracks':len(tracks)})
