@@ -1,0 +1,28 @@
+import {useState} from 'react';
+import {useQuery} from '@tanstack/react-query';
+import {request,upload,useConnection} from './api';
+import type {Project,Scene} from './types';
+
+export function BackupPanel({project,act}:{project?:Project;act:any}){
+  const backups=useQuery<any[]>({queryKey:['backups'],queryFn:()=>request('/api/backups'),refetchInterval:30000});
+  return <section className="panel settings-panel"><h3>Project backups & portable bundles</h3><p>Bundles contain the selected project’s media and history. Restore creates a separate paused copy with new identifiers.</p>
+    <div className="button-row"><button className="button" disabled={!project} onClick={()=>act(async()=>{await request(`/api/projects/${project!.id}/backup`,{});backups.refetch()},'Project bundle saved on the project drive.')}>Back up {project?.title || 'selected project'}</button><label className="upload-label">Restore a project bundle<input type="file" accept=".zip" onChange={e=>{const file=e.target.files?.[0];if(file)act(()=>upload('/api/backups/restore',file),'Restored as a separate paused project. Open it from Overview.')}}/></label></div>
+    {backups.data?.map(b=><div className="setting-row" key={b.id}><span>{new Date(b.created*1000).toLocaleString()} · {(b.bytes/1024**2).toFixed(1)} MB</span><button className="button" onClick={()=>act(async()=>{const result=await request(`/api/backups/${b.id}/ticket`,{});const link=document.createElement('a');link.href=useConnection.getState().url+result.url;link.download=b.filename;link.click()},'')}>Download bundle</button></div>)}
+  </section>
+}
+
+export function WorkflowImporter({act}:{act:any}){
+  const [name,setName]=useState('');const [task,setTask]=useState('image_to_video');const [family,setFamily]=useState('Custom local workflow');const [graph,setGraph]=useState('');
+  const [outputs,setOutputs]=useState('save');const [mappings,setMappings]=useState(JSON.stringify({positive_prompt:{node:'positive',input:'text'},seed:{node:'sampler',input:'seed'},width:{node:'latent',input:'width'},height:{node:'latent',input:'height'},source_image:{node:'source',input:'image'},frames:{node:'condition',input:'length'},fps:{node:'video',input:'fps'}},null,2));
+  const [constraints,setConstraints]=useState(JSON.stringify({multiple:16,max_width:832,max_height:480,max_frames:81,frames_multiple:4,frames_offset:1},null,2));
+  return <details className="panel"><summary>Import an API workflow · advanced mapping editor</summary><p>Import only a workflow you trust. Studio validates installed nodes, model files, mapped inputs and output nodes. Importing does not install nodes, download models, or prove that generation fits memory.</p>
+    <div className="settings-grid"><label>Display name<input value={name} onChange={e=>setName(e.target.value)}/></label><label>Model family<input value={family} onChange={e=>setFamily(e.target.value)}/></label><label>Task<select value={task} onChange={e=>setTask(e.target.value)}><option value="image_to_video">Animate a starting still</option><option value="text_to_image">Generate a still</option></select></label><label>API-format workflow file<input type="file" accept=".json" onChange={e=>{const f=e.target.files?.[0];if(f)act(async()=>{if(f.size>2*1024**2)throw Error('Workflow exceeds 2 MB');setGraph(await f.text())},'Workflow loaded for mapping review.')}}/></label></div>
+    <label>API workflow JSON<textarea rows={7} value={graph} onChange={e=>setGraph(e.target.value)}/></label><div className="settings-grid"><label>Input mappings<textarea rows={12} value={mappings} onChange={e=>setMappings(e.target.value)}/></label><label>Conservative limits<textarea rows={8} value={constraints} onChange={e=>setConstraints(e.target.value)}/></label></div><label>Output node IDs, separated by commas<input value={outputs} onChange={e=>setOutputs(e.target.value)}/></label>
+    <button className="button primary" disabled={!name || !graph} onClick={()=>act(()=>request('/api/workflows/import',{name,family,task,graph:JSON.parse(graph),mappings:JSON.parse(mappings),constraints:JSON.parse(constraints),output_nodes:outputs.split(',').map(s=>s.trim()).filter(Boolean)}),'Workflow registered. Review its readiness in the library.')}>Validate & register workflow</button>
+  </details>
+}
+
+export function SceneHistory({scene,act}:{scene:Scene;act:any}){
+  const revisions=useQuery<any[]>({queryKey:['revisions',scene.id,scene.revision],queryFn:()=>request(`/api/scenes/${scene.id}/revisions`)});
+  return <div><h3>Creative history</h3><p>Restore creates a new revision; active jobs keep their original inputs.</p><div className="button-row"><button className="button" onClick={()=>act(()=>request(`/api/scenes/${scene.id}/duplicate`,{}),'Scene copied with separate identifiers.')}>Duplicate scene</button><button className="button" onClick={()=>act(()=>request(`/api/scenes/${scene.id}`,{revision:scene.revision,body:{disabled:!scene.body.disabled}},'PATCH'),scene.body.disabled?'Scene enabled.':'Scene excluded from new automatic production.')}>{scene.body.disabled?'Enable scene':'Exclude from production'}</button></div>{revisions.data?.map(r=><details key={r.id}><summary>Revision {r.number} · {new Date(r.created*1000).toLocaleString()}</summary><pre style={{whiteSpace:'pre-wrap'}}>{JSON.stringify(JSON.parse(r.body),null,2)}</pre><button className="button" disabled={r.number===scene.revision} onClick={()=>act(()=>request(`/api/scenes/${scene.id}/restore/${r.number}`,{}),'Scene restored as a new revision.')}>Restore this revision</button></details>)}<p className="muted">Masked editing, outpainting and neural upscaling need a separately verified local workflow. This installed still adapter supports text-to-image generation.</p></div>
+}

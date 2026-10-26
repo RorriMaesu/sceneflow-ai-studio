@@ -68,6 +68,8 @@ import type {
 } from "./types";
 import "./style.css";
 import { ProductionSettings } from "./production-settings";
+import { TimelineEditor } from "./timeline-editor";
+import { BackupPanel,WorkflowImporter,SceneHistory } from "./tools-panels";
 
 const client = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -767,6 +769,7 @@ function Studio() {
                 </>
               ) : page === "Settings" ? (
                 <SettingsPage
+                  project={project}
                   data={data}
                   act={act}
                   onPair={() => setPairOpen(true)}
@@ -1022,7 +1025,7 @@ function Studio() {
                       </section>
                       {scene && (
                         <SceneInspector
-                          key={scene.id + ":" + scene.revision}
+                          key={scene.id}
                           scene={scene}
                           project={project}
                           workflows={models.data || []}
@@ -1045,7 +1048,7 @@ function Studio() {
                       act={act}
                     />
                   ) : page === "Timeline" ? (
-                    <TimelinePage project={project} act={act} />
+                    <TimelineEditor key={project.id} project={project} act={act} renderMedia={a=><Media asset={a} controls/>}/>
                   ) : page === "Exports" ? (
                     <ExportsPage
                       assets={(data?.assets || []).filter(
@@ -1396,10 +1399,15 @@ function SceneInspector({
   produce: (s: string) => void;
   close: () => void;
 }) {
-  const [title, setTitle] = useState(scene.title);
-  const [body, setBody] = useState({ ...scene.body });
+  const draftKey='sceneflow.draft.'+scene.id;
+  const [draft]=useState(()=>{try{return JSON.parse(localStorage.getItem(draftKey)||'null')}catch{return null}});
+  const [title, setTitle] = useState(draft?.title ?? scene.title);
+  const [body, setBody] = useState(draft?.body ?? { ...scene.body });
+  const [baseRevision,setBaseRevision]=useState(draft?.revision ?? scene.revision);
   const [tab, setTab] = useState("Direction");
-  const [dirty, setDirty] = useState(false);
+  const [dirty, setDirty] = useState(!!draft);
+  useEffect(()=>{if(dirty)localStorage.setItem(draftKey,JSON.stringify({title,body,revision:baseRevision}));else localStorage.removeItem(draftKey)},[title,body,dirty]);
+  useEffect(()=>{if(!dirty){setTitle(scene.title);setBody({...scene.body});setBaseRevision(scene.revision)}},[scene.revision,dirty]);
   const change = (key: string, value: any) => {
     setBody({ ...body, [key]: value });
     setDirty(true);
@@ -1422,7 +1430,7 @@ function SceneInspector({
         </button>
       </div>
       <div className="inspector-tabs">
-        {["Direction", "Takes", "Settings"].map((t) => (
+        {["Direction", "Takes", "Settings", "History"].map((t) => (
           <button
             key={t}
             className={tab === t ? "selected" : ""}
@@ -1433,6 +1441,7 @@ function SceneInspector({
         ))}
       </div>
       <div className="inspector-content">
+        {dirty && <p className="muted">Draft saved in this browser. {baseRevision!==scene.revision ? 'A newer scene revision exists; compare before saving.' : 'Save to update pending generation.'} <button className="text-link" onClick={()=>{setDirty(false);setTitle(scene.title);setBody({...scene.body});setBaseRevision(scene.revision)}}>Discard draft</button></p>}
         {tab === "Direction" ? (
           <>
             <label>
@@ -1494,12 +1503,13 @@ function SceneInspector({
               disabled={!dirty}
               onClick={() =>
                 act(
-                  () =>
-                    request(
+                  async () => {
+                    const result=await request(
                       "/api/scenes/" + scene.id,
-                      { revision: scene.revision, title, body },
+                      { revision: baseRevision, title, body },
                       "PATCH",
-                    ),
+                    );setDirty(false);setBaseRevision(result.revision);return result;
+                  },
                   "New scene revision saved. Active jobs keep their original settings.",
                 )
               }
@@ -1587,7 +1597,7 @@ function SceneInspector({
               Scene overrides are saved independently from project defaults.
             </p>
           </>
-        ) : (
+        ) : tab === "History" ? <SceneHistory scene={scene} act={act}/> : (
           <>
             {scene.assets.length ? (
               scene.assets.map((a) => (
@@ -1654,6 +1664,7 @@ function SceneInspector({
             Animate
           </Button>
         </div>
+        {featurePhase>=4 && <label className="upload-label">Import a video take<input type="file" accept=".mp4,.webm,.mkv,.mov" onChange={e=>{const file=e.target.files?.[0];if(file)act(()=>upload(`/api/projects/${project.id}/import-media?scene_id=${scene.id}`,file),'Video imported into this scene.')}}/></label>}
         {featurePhase >= 2 && (
           <label className="upload-label">
             <Upload size={14} />
@@ -1899,159 +1910,6 @@ function DirectorPage({
     </div>
   );
 }
-function TimelinePage({ project, act }: { project: Project; act: any }) {
-  const timeline = project.timeline;
-  const [clips, setClips] = useState<any[]>(timeline?.clips || []);
-  const [dirty, setDirty] = useState(false);
-  const move = (index: number, delta: number) => {
-    const next = [...clips];
-    [next[index], next[index + delta]] = [next[index + delta], next[index]];
-    setClips(next);
-    setDirty(true);
-  };
-  return (
-    <section className="panel">
-      <div className="section-heading">
-        <div>
-          <h2>Your final cut</h2>
-          <p>
-            Arrange the story in playback order, independently of rendering.
-          </p>
-        </div>
-        <div className="button-row">
-          {project.scenes.some((s) => s.selected_video_id) &&
-            project.scenes.some((s) => !s.selected_video_id) && (
-              <Button
-                onClick={() =>
-                  act(async () => {
-                    const value = await request(
-                      `/api/projects/${project.id}/timeline/rebuild`,
-                      { partial: true },
-                    );
-                    setClips(value.clips);
-                    setDirty(false);
-                  }, "Partial preview timeline created. Missing scenes stay incomplete.")
-                }
-              >
-                Build partial preview
-              </Button>
-            )}
-          <Button
-            disabled={featurePhase < 2}
-            onClick={() =>
-              act(async () => {
-                const value = await request(
-                  `/api/projects/${project.id}/timeline/rebuild`,
-                  {},
-                );
-                setClips(value.clips);
-                setDirty(false);
-              }, "Timeline built from selected takes.")
-            }
-          >
-            <Layers size={15} />
-            Build timeline
-          </Button>
-          <Button
-            primary
-            disabled={!dirty || featurePhase < 2}
-            onClick={() =>
-              act(
-                () =>
-                  request(
-                    `/api/projects/${project.id}/timeline`,
-                    {
-                      revision: timeline.revision,
-                      clips,
-                      audio: timeline.audio,
-                      settings: timeline.settings,
-                    },
-                    "PATCH",
-                  ),
-                "Timeline saved. Previous exports retain their original versions.",
-              )
-            }
-          >
-            <Save size={15} />
-            Save timeline
-          </Button>
-        </div>
-      </div>
-      {clips.length ? (
-        <div className="timeline-clips">
-          {clips.map((clip, index) => {
-            const scene = project.scenes.find((s) => s.id === clip.scene_id);
-            const asset = scene?.assets.find((a) => a.id === clip.asset_id);
-            return (
-              <div className="timeline-clip" key={clip.id}>
-                <div className="timeline-index">{index + 1}</div>
-                <Media asset={asset} controls />
-                <div>
-                  <strong>{scene?.title || "Clip"}</strong>
-                  <div className="button-row">
-                    <label>
-                      In
-                      <input
-                        type="number"
-                        step=".1"
-                        min="0"
-                        value={clip.trim_in || 0}
-                        onChange={(e) => {
-                          setClips(
-                            clips.map((c, i) =>
-                              i === index
-                                ? { ...c, trim_in: Number(e.target.value) }
-                                : c,
-                            ),
-                          );
-                          setDirty(true);
-                        }}
-                      />
-                    </label>
-                    <label>
-                      Out
-                      <input
-                        type="number"
-                        step=".1"
-                        min="0"
-                        value={clip.trim_out || 0}
-                        onChange={(e) => {
-                          setClips(
-                            clips.map((c, i) =>
-                              i === index
-                                ? { ...c, trim_out: Number(e.target.value) }
-                                : c,
-                            ),
-                          );
-                          setDirty(true);
-                        }}
-                      />
-                    </label>
-                  </div>
-                </div>
-                <Button disabled={index === 0} onClick={() => move(index, -1)}>
-                  <ArrowUp size={15} />
-                </Button>
-                <Button
-                  disabled={index === clips.length - 1}
-                  onClick={() => move(index, 1)}
-                >
-                  <ArrowDown size={15} />
-                </Button>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <Empty
-          icon={Film}
-          title="Make every scene flow"
-          description="Select your preferred video takes, then build a timeline to arrange and trim your movie."
-        />
-      )}
-    </section>
-  );
-}
 function ExportsPage({
   assets,
   project,
@@ -2134,6 +1992,7 @@ function ModelsPage({
 }) {
   return (
     <section>
+      {featurePhase>=4 && <WorkflowImporter act={act}/>}
       <div className="section-heading">
         <div>
           <span className="eyebrow">YOUR CREATIVE TOOLKIT</span>
@@ -2215,10 +2074,12 @@ function SettingsPage({
   data,
   act,
   onPair,
+  project,
 }: {
   data?: Bootstrap;
   act: any;
   onPair: () => void;
+  project?:Project;
 }) {
   const [comfy, setComfy] = useState(
     data?.settings.comfy_url || "http://127.0.0.1:8188",
@@ -2333,6 +2194,7 @@ function SettingsPage({
           Source & release notes <ExternalLink size={13} />
         </a>
       </div>
+      {featurePhase>=4 && <BackupPanel project={project} act={act}/>}
     </section>
   );
 }
@@ -2378,3 +2240,4 @@ createRoot(document.getElementById("root")!).render(
     </QueryClientProvider>
   </React.StrictMode>,
 );
+

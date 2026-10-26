@@ -243,6 +243,8 @@ from .routes_production import router as production_router
 app.include_router(production_router)
 from .routes_director import router as director_router
 app.include_router(director_router)
+from .routes_editing import router as editing_router
+app.include_router(editing_router)
 
 
 @app.get('/{path:path}')

@@ -47,7 +47,7 @@ def wan_graph(s, prefix, image):
 
 
 BUILTINS = [
-    {'id': 'qwen-image-21', 'name': 'Qwen Image 2.1 · INT8', 'family': 'Qwen Image 2.1', 'task': 'text_to_image', 'capabilities': {'negative_prompt': True, 'reference_images': True, 'audio': False}, 'constraints': {'multiple': 32, 'max_width': 2048, 'max_height': 2048}, 'mappings': {}, 'output_nodes': ['save']},
+    {'id': 'qwen-image-21', 'name': 'Qwen Image 2.1 · INT8', 'family': 'Qwen Image 2.1', 'task': 'text_to_image', 'capabilities': {'negative_prompt': True, 'reference_images': False, 'image_editing':False, 'audio': False}, 'constraints': {'multiple': 32, 'max_width': 2048, 'max_height': 2048}, 'mappings': {}, 'output_nodes': ['save']},
     {'id': 'wan22-i2v', 'name': 'Wan 2.2 · I2V A14B FP8', 'family': 'Wan 2.2', 'task': 'image_to_video', 'capabilities': {'negative_prompt': True, 'source_image': True, 'audio': False, 'first_last_frame': False}, 'constraints': {'multiple': 16, 'frames_multiple': 4, 'frames_offset': 1, 'max_width': 832, 'max_height': 480, 'max_frames': 81}, 'mappings': {}, 'output_nodes': ['save']},
 ]
 DUMMY = {'positive_prompt': '', 'negative_prompt': '', 'width': 640, 'height': 352, 'seed': 1, 'frames': 49, 'fps': 16}
@@ -65,6 +65,9 @@ def validate_graph(graph, info, output_nodes):
     if not output_nodes or any(key not in graph for key in output_nodes):
         reasons.append('Select valid output nodes in the mapping editor.')
     for key, item in graph.items():
+        if not isinstance(key,str) or not isinstance(item,dict) or not isinstance(item.get('inputs'),dict):
+            reasons.append('Workflow nodes need string IDs, class_type and an input object.')
+            continue
         kind = item.get('class_type')
         if kind not in SAFE_NODES:
             reasons.append(f'{kind}: this node is not in the local execution allowlist.')
@@ -74,6 +77,8 @@ def validate_graph(graph, info, output_nodes):
             reasons.append(f'{kind}: required node is not installed.')
             continue
         inputs = item.get('inputs', {})
+        if key in output_nodes and not schema.get('output_node',False):
+            reasons.append(f'{kind}: selected output node does not save media.')
         for name, spec in schema.get('input', {}).get('required', {}).items():
             if name not in inputs:
                 if name == 'images' and kind == 'TextEncodeQwenImage21':

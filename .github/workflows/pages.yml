@@ -24,6 +24,7 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install -r backend/requirements.txt
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: python -m pytest backend/tests -q
         env:
           STUDIO_ROOT: /tmp/sceneflow-test

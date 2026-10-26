@@ -26,6 +26,16 @@
 - During the first scene's real video render, the second scene's pending motion prompt was edited. Only that pending job was superseded. Its replacement preserved the selected still ID; the active job's saved inputs were byte-for-byte unchanged. Both scene videos and final assembly completed.
 - Added independent planning/image/video selectors, candidate count, editable Hybrid review gates, planning approval, pending priority/cancellation, frozen-input inspection, and one-use pairing code creation for another browser.
 
+## Phase 4 — Editing, sound and portability
+
+- All 34 backend tests passed locally, including eight new FFmpeg/backup integration tests. With the large example generating at the same time on the shared project drive, the full run took 14 minutes 26 seconds; the media-only run took 36 seconds. These are observed test timings, not generation estimates.
+- Labeled red/green/blue clips verified playback order by decoded pixel colors even after the saved timeline changed. Export snapshots retained the originally queued order. Output audio was verified as a single 48 kHz stereo track.
+- Fade, fade-through-black, dissolve, two repeated loops, crossfaded loop boundaries and explicitly silent variants passed probe and full-decode checks. The tests caught and fixed FFmpeg 9 filter-file syntax and AAC padding affecting repeated-loop frame timing.
+- Imported music and voiceover passed trims, placement, volume, fades and music ducking tests. Modified source bytes blocked frozen exports. Re-executing the same completed export did not create duplicate assets.
+- Project bundle restore verified fresh project/scene/asset identifiers, media hashes, original-project preservation and a paused restored project. Traversal entries were rejected before writing outside restore storage.
+- The real browser split a generated clip, saved a new timeline revision and restored the earlier cut as a further revision. Media controls, source trims, replacement takes, split/duplicate/remove, reorder, local undo/redo and export settings are available in the editor.
+- The complete two-scene real movie is 1920×1080 H.264, 30 fps, 124 decoded frames, 4.133333 seconds, explicitly silent. The eight-scene example is running separately; its completed movie will be recorded only after it finishes.
+
 ## Still required before completion
 
-Optional vision QA and bounded regeneration; richer timeline/audio transitions; synthetic export-order tests; backup/restore; workflow import mappings; standalone Edge/Chrome local-network permission cases; final accessibility and release audit. Later phases will add evidence here rather than treating planned tests as passed.
+Optional vision QA and bounded regeneration; standalone Edge/Chrome local-network permission cases; final accessibility and release audit. Later phases will add evidence here rather than treating planned tests as passed.

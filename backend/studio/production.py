@@ -102,6 +102,7 @@ def current_video(scene):
 def produce(project_id, scope='all', scene_id=None):
     project = db.project(project_id)
     scenes = [s for s in project['scenes'] if s['id']==scene_id] if scope.startswith('selected') else project['scenes']
+    scenes=[s for s in scenes if not s['body'].get('disabled')]
     if not scenes:
         raise ValueError('Add or select a scene first.')
     automatic = scope=='all' and project['mode']!='manual'
@@ -220,6 +221,8 @@ class Dispatcher:
             project = db.project(job['project_id'])
             control = state(job['project_id'])
             snap = json.loads(job['snapshot'])
+            if job['scene_id'] and db.scene(job['scene_id'])['body'].get('disabled'):
+                continue
             if control['paused'] or project['archived'] or (project['mode']=='manual' and snap.get('automatic')):
                 continue
             dependencies = json.loads(job['dependencies'])
