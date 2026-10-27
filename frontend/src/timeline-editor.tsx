@@ -228,7 +228,7 @@ export function TimelineEditor({
                   />
                 </label>
               </div>
-              <div className="settings-grid">
+              <details className="clip-detail"><summary>Speed, sound & precise timing</summary><div className="settings-grid">
                 <label>
                   Trim in
                   <input
@@ -323,13 +323,13 @@ export function TimelineEditor({
                       .filter((a) => a.kind === "video")
                       .map((a) => (
                         <option key={a.id} value={a.id}>
-                          {a.id.slice(0, 8)}
+                          Clip version {(scene?.assets.filter(v=>v.kind==="video").length||0)-(scene?.assets.filter(v=>v.kind==="video").findIndex(v=>v.id===a.id)||0)} · {new Date(a.created*1000).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}
                           {a.approved ? " · approved" : ""}
                         </option>
                       ))}
                   </select>
                 </label>
-              </div>
+              </div></details>
               <div className="button-row">
                 <button
                   className="button"
@@ -618,6 +618,7 @@ export function TimelineEditor({
         <label>
           Restore a saved version
           <select
+            disabled={dirty}
             value=""
             onChange={(e) => {
               if (e.target.value)
@@ -633,7 +634,7 @@ export function TimelineEditor({
                 );
             }}
           >
-            <option value="">Choose timeline revision</option>
+            <option value="">Choose an earlier edit</option>
             {history.data
               ?.filter((h) => h.revision !== revision)
               .map((h) => (

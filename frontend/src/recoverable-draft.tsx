@@ -1,9 +1,9 @@
 import {useEffect, useState} from 'react';
 import {changed,readDraft,writeDraft} from './draft-store';
 
-export function useRecoverableDraft<T>(key:string, server:T, revision:number, valid:(v:any)=>boolean){
+export function useRecoverableDraft<T>(key:string, server:T, revision:number, valid:(v:any)=>boolean,legacy?:()=>{value:T;revision:number}|null){
   const [record,setRecord]=useState(()=>{
-    try {return readDraft<T>(localStorage,key,valid)||{version:1 as const,value:server,baseline:server,revision};}
+    try {const saved=readDraft<T>(localStorage,key,valid);if(saved)return saved;const old=legacy?.();return {version:1 as const,value:old&&valid(old.value)?old.value:server,baseline:server,revision:old&&valid(old.value)?old.revision:revision};}
     catch {return {version:1 as const,value:server,baseline:server,revision};}
   });
   const [storageError,setStorageError]=useState('');

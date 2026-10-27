@@ -73,6 +73,8 @@ import { BackupPanel, WorkflowImporter, SceneHistory } from "./tools-panels";
 import { AssetQuality } from "./quality-panel";
 import { ProductionInsights } from "./production-insights";
 import {ProjectStatus} from "./project-status";
+import {useRecoverableDraft,DraftNotice} from "./recoverable-draft";
+import {DirectorProposal} from "./director-proposal";
 import {ProjectSteps,NextStep,StoryGuide,HelpPage} from "./guided-project";
 import {PAGE_NAMES,STEPS} from "./flow";
 import {NewVideoWizard} from "./new-video";
@@ -511,12 +513,13 @@ function Studio() {
     );
   }
   useEffect(()=>{window.scrollTo(0,0);const heading=document.querySelector<HTMLElement>("main h1, main h2");if(heading){heading.tabIndex=-1;heading.focus({preventScroll:true});}},[page,active]);
+  useEffect(()=>{if(scene&&["Storyboard","Image Studio","Video Studio"].includes(page))requestAnimationFrame(()=>document.querySelector(".scene-editor")?.scrollIntoView({block:"start"}));},[scene?.id,page]);
   const go = (next: string) => {
     setPage(next);
     setSidebar(false);
   };
   return (
-    <div className="app-shell">
+    <div className={"app-shell"+(scene&&["Storyboard","Image Studio","Video Studio"].includes(page)?" scene-open":"")}>
       <aside className={`sidebar ${sidebar ? "open" : ""}`}>
         <a
           className="brand"
@@ -618,7 +621,7 @@ function Studio() {
               initial={reduced ? false : { opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.16 }}
+              transition={{ duration: 0 }}
             >
               {(!connection.token || boot.isError) && (
                 <div className="connection-banner">
@@ -982,7 +985,7 @@ function Studio() {
                         <div className="section-heading compact">
                           <div>
                             <h2>
-                              {page === "Storyboard" ? "Your scenes" : PAGE_NAMES[page]}
+                              {scene ? "Scenes" : page === "Storyboard" ? "Your scenes" : PAGE_NAMES[page]}
                             </h2>
                             <p>
                               {page === "Storyboard"
@@ -1129,6 +1132,9 @@ function Studio() {
                           scene={scene}
                           project={project}
                           workflows={models.data || []}
+                          view={page==="Image Studio"?"image":page==="Video Studio"?"video":"story"}
+                          busy={busy}
+                          askDirector={()=>go("AI Director")}
                           act={act}
                           produce={produce}
                           close={() => setSelected("")}
@@ -1492,7 +1498,7 @@ function SceneInspector({
   workflows,
   act,
   produce,
-  close,
+  close,view,busy,askDirector,
 }: {
   scene: Scene;
   project: Project;
@@ -1500,49 +1506,28 @@ function SceneInspector({
   act: any;
   produce: (s: string) => void;
   close: () => void;
+  view:"story"|"image"|"video";busy:boolean;askDirector:()=>void;
 }) {
-  const draftKey = "sceneflow.draft." + scene.id;
-  const [draft] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem(draftKey) || "null");
-    } catch {
-      return null;
-    }
+  const legacyKey='sceneflow.draft.'+scene.id;
+  const draft=useRecoverableDraft('scene.'+scene.id,{title:scene.title,body:scene.body},scene.revision,v=>typeof v?.title==='string'&&!!v?.body,()=>{
+    try{const old=JSON.parse(localStorage.getItem(legacyKey)||'null');return old&&Number.isInteger(old.revision)?{value:{title:old.title,body:old.body},revision:old.revision}:null}catch{return null}
   });
-  const [title, setTitle] = useState(draft?.title ?? scene.title);
-  const [body, setBody] = useState(draft?.body ?? { ...scene.body });
-  const [baseRevision, setBaseRevision] = useState(
-    draft?.revision ?? scene.revision,
-  );
-  const [tab, setTab] = useState("Direction");
-  const [dirty, setDirty] = useState(!!draft);
-  useEffect(() => {
-    if (dirty)
-      localStorage.setItem(
-        draftKey,
-        JSON.stringify({ title, body, revision: baseRevision }),
-      );
-    else localStorage.removeItem(draftKey);
-  }, [title, body, dirty]);
-  useEffect(() => {
-    if (!dirty) {
-      setTitle(scene.title);
-      setBody({ ...scene.body });
-      setBaseRevision(scene.revision);
-    }
-  }, [scene.revision, dirty]);
-  const change = (key: string, value: any) => {
-    setBody({ ...body, [key]: value });
-    setDirty(true);
-  };
+  const {title,body}=draft.value;const dirty=draft.dirty,baseRevision=draft.revision;
+  const setTitle=(title:string)=>draft.setValue(v=>({...v,title}));
+  const setBody=(body:Record<string,any>)=>draft.setValue(v=>({...v,body}));
+  const change=(key:string,value:any)=>setBody({...body,[key]:value});
+  const [tab,setTab]=useState(view==='story'?'Direction':'Takes');
+  const versions=scene.assets.filter(a=>(view==='story'?['image','video'].includes(a.kind):a.kind===view)&&a.metadata.role!=='edit_mask');
+  const selectedVideo=scene.assets.find(a=>a.id===scene.selected_video_id);
+  useEffect(()=>{try{if(!dirty||localStorage.getItem('sceneflow.safe-draft.scene.'+scene.id))localStorage.removeItem(legacyKey)}catch{}},[dirty,body,title]);
   const selectedImage = scene.assets.find(
     (a) => a.id === scene.selected_image_id,
   );
   return (
-    <aside className="inspector">
+    <aside className="inspector scene-editor" data-view={view}>
       <div className="inspector-header">
         <span>
-          <SlidersHorizontal size={16} /> SCENE INSPECTOR
+          <SlidersHorizontal size={16} /> {scene.title} · {project.title}
         </span>
         <button
           className="icon-button"
@@ -1552,37 +1537,22 @@ function SceneInspector({
           <X size={17} />
         </button>
       </div>
-      <div className="inspector-tabs">
+      <div className="inspector-tabs" role="tablist" aria-label="Scene editing">
         {["Direction", "Takes", "Settings", "History"].map((t) => (
           <button
             key={t}
+            role="tab" aria-selected={tab===t} tabIndex={tab===t?0:-1} aria-controls={"scene-panel-"+scene.id} id={"scene-tab-"+scene.id+t}
+            onKeyDown={e=>{const names=["Direction","Takes","Settings","History"];const index=names.indexOf(t);const next=e.key==="ArrowRight"?(index+1)%4:e.key==="ArrowLeft"?(index+3)%4:e.key==="Home"?0:e.key==="End"?3:-1;if(next>=0){e.preventDefault();setTab(names[next]);(e.currentTarget.parentElement?.querySelectorAll<HTMLElement>("[role=tab]")[next])?.focus()}}}
             className={tab === t ? "selected" : ""}
             onClick={() => setTab(t)}
           >
-            {t}
+            {{Direction:"Describe",Takes:"Versions",Settings:"Advanced",History:"History"}[t]}
           </button>
         ))}
       </div>
-      <div className="inspector-content">
-        {dirty && (
-          <p className="muted">
-            Draft saved in this browser.{" "}
-            {baseRevision !== scene.revision
-              ? "A newer scene revision exists; compare before saving."
-              : "Save to update pending generation."}{" "}
-            <button
-              className="text-link"
-              onClick={() => {
-                setDirty(false);
-                setTitle(scene.title);
-                setBody({ ...scene.body });
-                setBaseRevision(scene.revision);
-              }}
-            >
-              Discard draft
-            </button>
-          </p>
-        )}
+      <div className="scene-current-preview"><p>{view==='video'&&selectedVideo?'Clip currently in use':'Starting photo currently in use'}</p>{view==='video'&&selectedVideo?<Media asset={selectedVideo} controls/>:selectedImage?<Media asset={selectedImage} controls/>:<p className="media-placeholder">Create or import a starting photo, then choose it for this scene.</p>}<p className="muted">Earlier versions remain available. You can change your choice.</p><button className="button" onClick={askDirector}>Ask the Director about this scene</button></div>
+      <div className="inspector-content" role="tabpanel" id={'scene-panel-'+scene.id} aria-labelledby={'scene-tab-'+scene.id+tab}>
+      <DraftNotice draft={draft}/>
         {tab === "Direction" ? (
           <>
             <label>
@@ -1591,7 +1561,6 @@ function SceneInspector({
                 value={title}
                 onChange={(e) => {
                   setTitle(e.target.value);
-                  setDirty(true);
                 }}
               />
             </label>
@@ -1606,7 +1575,7 @@ function SceneInspector({
             <label>
               <span>
                 <ImageIcon size={14} />
-                Starting still prompt
+                What does the starting picture look like?
               </span>
               <textarea
                 rows={6}
@@ -1618,7 +1587,7 @@ function SceneInspector({
             <label>
               <span>
                 <Video size={14} />
-                Animation prompt
+                What should move?
               </span>
               <textarea
                 rows={6}
@@ -1628,7 +1597,7 @@ function SceneInspector({
               />
             </label>
             <label>
-              Negative prompt
+              Things to avoid · optional
               <textarea
                 rows={2}
                 value={body.negative_prompt || ""}
@@ -1649,7 +1618,7 @@ function SceneInspector({
             )}
             <Button
               primary
-              disabled={!dirty}
+              disabled={!dirty||draft.conflict||busy}
               onClick={() =>
                 act(async () => {
                   const result = await request(
@@ -1657,8 +1626,7 @@ function SceneInspector({
                     { revision: baseRevision, title, body },
                     "PATCH",
                   );
-                  setDirty(false);
-                  setBaseRevision(result.revision);
+                  draft.adopt({title:result.title,body:result.body},result.revision);
                   return result;
                 }, "New scene revision saved. Active jobs keep their original settings.")
               }
@@ -1733,7 +1701,7 @@ function SceneInspector({
             />
             <Button
               primary
-              disabled={!dirty}
+              disabled={!dirty||draft.conflict||busy}
               onClick={() =>
                 act(async () => {
                   const result = await request(
@@ -1741,8 +1709,7 @@ function SceneInspector({
                     { revision: baseRevision, body },
                     "PATCH",
                   );
-                  setDirty(false);
-                  setBaseRevision(result.revision);
+                  draft.adopt({title:result.title,body:result.body},result.revision);
                   return result;
                 }, "Settings saved as a new revision.")
               }
@@ -1758,15 +1725,15 @@ function SceneInspector({
           <SceneHistory scene={scene} act={act} />
         ) : (
           <>
-            <CandidateReview
+            {view!=="video"&&<CandidateReview
               scene={scene}
               project={project}
               act={act}
               renderMedia={(a) => <Media asset={a} controls />}
-            />
-            {scene.assets.length ? (
-              scene.assets.map((a) => (
-                <div className="take" key={a.id}>
+            />}
+            {versions.length ? (
+              versions.map((a,index) => (
+                <div className="take" key={a.id}><h3>{a.kind==="image"?"Photo":"Clip"} version {versions.length-index}</h3>{[scene.selected_image_id,scene.selected_video_id].includes(a.id)&&<Badge tone="green">Used in this scene</Badge>}
                   <Media asset={a} controls />
                   {a.kind === "image" && (
                     <CorrectionCanvas
@@ -1785,65 +1752,43 @@ function SceneInspector({
                   </div>
                   <p>Created {new Date(a.created * 1000).toLocaleString()}</p>
                   {featurePhase >= 5 && ["image", "video"].includes(a.kind) && (
-                    <AssetQuality asset={a} project={project} act={act} />
+                    <details className="quality-details"><summary>Optional AI check & video samples</summary><AssetQuality asset={a} project={project} act={act} /></details>
                   )}
-                  <div className="button-row">
-                    <Button
-                      onClick={() =>
-                        act(
-                          () => request(`/api/assets/${a.id}/select`, {}),
-                          "Take selected for this scene.",
-                        )
-                      }
-                    >
-                      <Check size={14} />
-                      Select
-                    </Button>
-                    <Button
-                      onClick={() =>
-                        act(
-                          () => request(`/api/assets/${a.id}/approve`, {}),
-                          "This exact take is approved.",
-                        )
-                      }
-                    >
-                      <ShieldCheck size={14} />
-                      Approve
-                    </Button>
-                  </div>
+                  <div className="button-row"><Button primary disabled={busy||!!a.approved&&[scene.selected_image_id,scene.selected_video_id].includes(a.id)} onClick={()=>act(()=>request(`/api/assets/${a.id}/approve`,{}),'Chosen version saved for this scene.')}><Check size={16}/>{[scene.selected_image_id,scene.selected_video_id].includes(a.id)&&a.approved?'In use':a.kind==='image'?'Use this photo':'Use this clip'}</Button></div><p className="muted">Choosing a version approves it for this scene. Any next automatic task follows your production mode and pause state.</p>
+
                 </div>
               ))
             ) : (
               <Empty
                 icon={ImageIcon}
-                title="Your takes will appear here"
-                description="Generate or import a still to start this scene."
+                title="Your versions will appear here"
+                description="Create or import a starting photo to begin."
               />
             )}
           </>
         )}
       </div>
-      <div className="inspector-footer">
+      <div className="inspector-footer"><p>{dirty?"Save or discard your draft before creating a new version.":"Create another version only for this scene. Existing versions stay available."}</p>
         <div className="button-row">
           <Button
             onClick={() => produce("selected_still")}
-            disabled={featurePhase < 2 || dirty}
+            disabled={featurePhase < 2 || dirty || busy}
           >
             <ImageIcon size={15} />
-            Generate still
+            Create another photo
           </Button>
           <Button
             primary
             onClick={() => produce("selected_video")}
-            disabled={featurePhase < 2 || dirty || !selectedImage}
+            disabled={featurePhase < 2 || dirty || busy || !selectedImage}
           >
             <Play size={15} />
-            Animate
+            Create another clip
           </Button>
         </div>
         {featurePhase >= 4 && (
           <label className="upload-label">
-            Import a video take
+            Import a clip
             <input
               type="file"
               accept=".mp4,.webm,.mkv,.mov"
@@ -1865,7 +1810,7 @@ function SceneInspector({
         {featurePhase >= 2 && (
           <label className="upload-label">
             <Upload size={14} />
-            Import a still
+            Import a photo
             <input
               type="file"
               accept="image/png,image/jpeg,image/webp"
@@ -2090,6 +2035,7 @@ function DirectorPage({
   act: any;
 }) {
   const [text, setText] = useState("");
+  const [target,setTarget]=useState(selectedScene||"");
   const history = useQuery<any>({
     queryKey: ["director", project.id],
     queryFn: () => request(`/api/projects/${project.id}/director`),
@@ -2097,7 +2043,7 @@ function DirectorPage({
   });
   const [autoContinue, setAutoContinue] = useState(false);
   const [allowOperations, setAllowOperations] = useState(false);
-  const [model, setModel] = useState(project.settings.llm || "");
+  const [model, setModel] = useState(project.settings.llm || models.find(m=>!m.remote_host)?.name || "");
   const [count, setCount] = useState(4);
   return (
     <div className="director-layout">
@@ -2124,61 +2070,8 @@ function DirectorPage({
         {history.data?.proposals
           .filter((p: any) => p.status === "pending")
           .map((p: any) => (
-            <article className="panel" key={p.id}>
-              <h3>
-                {p.kind === "plan"
-                  ? "Proposed storyboard"
-                  : "Proposed creative changes"}
-              </h3>
-              <p>{p.body.synopsis || p.body.reply}</p>
-              <ul>
-                {p.impact?.map((line: string, i: number) => (
-                  <li key={i}>{line}</li>
-                ))}
-              </ul>
-              <details>
-                <summary>Review every proposed change</summary>
-                <pre
-                  style={{
-                    whiteSpace: "pre-wrap",
-                    overflowWrap: "anywhere",
-                    maxHeight: 400,
-                    overflowY: "auto",
-                  }}
-                >
-                  {JSON.stringify(p.body, null, 2)}
-                </pre>
-              </details>
-              <div className="button-row">
-                <Button
-                  primary
-                  onClick={() =>
-                    act(async () => {
-                      await request(
-                        `/proposals/${p.id}/apply`.replace(
-                          "/proposals",
-                          "/api/proposals",
-                        ),
-                        {},
-                      );
-                      history.refetch();
-                    }, "Creative changes saved as new revisions.")
-                  }
-                >
-                  Apply reviewed proposal
-                </Button>
-                <Button
-                  onClick={() =>
-                    act(async () => {
-                      await request(`/api/proposals/${p.id}/dismiss`, {});
-                      history.refetch();
-                    }, "Proposal dismissed.")
-                  }
-                >
-                  Dismiss
-                </Button>
-              </div>
-            </article>
+            <DirectorProposal key={p.id} proposal={p} project={project} apply={()=>act(async()=>{await request(`/api/proposals/${p.id}/apply`,{});history.refetch()},'Reviewed changes applied.')} dismiss={()=>act(async()=>{await request(`/api/proposals/${p.id}/dismiss`,{});history.refetch()},'Your current version was kept.')}/>
+
           ))}
         {history.data?.commands?.map((command: any) => (
           <p className="muted" key={command.id}>
@@ -2186,6 +2079,7 @@ function DirectorPage({
             {command.error ? " · " + command.error : ""}
           </p>
         ))}
+        <label className="director-scope">Discuss or change<select aria-label="Director target" value={target} onChange={e=>setTarget(e.target.value)}><option value="">This whole video · {project.title}</option>{project.scenes.map((scene,index)=><option key={scene.id} value={scene.id}>Scene {index+1} · {scene.title}</option>)}</select></label>
         <form
           className="director-composer"
           onSubmit={(e) => {
@@ -2195,7 +2089,7 @@ function DirectorPage({
                 model,
                 message: text,
                 allow_operations: allowOperations,
-                scene_id: selectedScene || null,
+                scene_id: target || null,
               });
               setText("");
               history.refetch();
@@ -2208,7 +2102,7 @@ function DirectorPage({
               checked={allowOperations}
               onChange={(e) => setAllowOperations(e.target.checked)}
             />{" "}
-            Include generation and queue command proposals
+            Allow proposals to create media or pause/resume work
           </label>
           <textarea
             aria-label="Message your Director"
@@ -2250,9 +2144,9 @@ function DirectorPage({
         <h3>{project.title}</h3>
         <p>{project.brief || "Add a creative brief in project settings."}</p>
         <div className="divider" />
-        <h4>Develop your storyboard</h4>
+        <h4>Plan suggested scenes</h4>
         <label>
-          Number of scenes
+          Number of new scenes
           <input
             type="number"
             min="1"
@@ -2278,7 +2172,7 @@ function DirectorPage({
           }
         >
           <WandSparkles size={16} />
-          Plan storyboard
+          {project.scenes.length?"Propose additional scenes":"Plan my scenes"}
         </Button>
         {project.mode === "automatic" && !project.scenes.length && (
           <label>
@@ -2291,7 +2185,7 @@ function DirectorPage({
           </label>
         )}
         <p className="muted">
-          The AI proposes a structured plan. You keep the final say.
+          Review the proposed scenes before applying them. Existing scenes stay in place; this adds new scenes.
         </p>
       </aside>
     </div>

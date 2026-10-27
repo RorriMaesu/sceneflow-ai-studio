@@ -44,14 +44,7 @@ export function ProductionSettings({
                     }}
           />
         </label>
-        <label>
-          Style guide
-          <textarea
-            rows={3}
-            value={values.style_guide || ""}
-            onChange={(e) => set("style_guide", e.target.value)}
-          />
-        </label>
+        <p>Edit style and character references in Look & photos.</p>
         <label>
           Planning model
           <select

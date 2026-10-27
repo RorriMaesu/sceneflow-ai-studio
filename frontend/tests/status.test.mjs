@@ -10,3 +10,4 @@ test('other projects do not affect this projects status',()=>{
   assert.equal(productionState(project,[{project_id:'other',status:'running'}],{paused:0}).label,'Ready for your next step');
   assert.equal(productionState(project,[{project_id:'p',status:'needs_attention'}],{paused:0}).label,'Needs your attention');
 });
+test('manual control does not suggest that a global resume will produce a video',()=>assert.equal(productionState({...project,mode:'manual'},[],{paused:1}).label,'Manual control'));

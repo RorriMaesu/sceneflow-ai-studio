@@ -95,8 +95,8 @@ export function VisualBible({
     queryFn: () => request("/api/assets?project_id=" + project.id),
     refetchInterval: 15000,
   });
-  const draft=useRecoverableDraft('look.'+project.id,{chosen:project.settings.reference_asset_ids||[],rules:project.settings.visual_rules||''},project.revision,v=>Array.isArray(v?.chosen)&&typeof v?.rules==='string');
-  const {chosen,rules}=draft.value;const dirty=draft.dirty,base=draft.revision;
+  const draft=useRecoverableDraft('look.'+project.id,{chosen:project.settings.reference_asset_ids||[],rules:project.settings.visual_rules||'',style:project.settings.style_guide||''},project.revision,v=>Array.isArray(v?.chosen)&&typeof v?.rules==='string');
+  const {chosen,rules}=draft.value;const style=(draft.value as any).style??project.settings.style_guide??'';const dirty=draft.dirty,base=draft.revision;
   const setChosen=(chosen:string[])=>draft.setValue(v=>({...v,chosen}));
   const setRules=(rules:string)=>draft.setValue(v=>({...v,rules}));
   const images =
@@ -106,7 +106,7 @@ export function VisualBible({
   return (
     <details className="panel visual-bible">
       <summary>
-        Visual bible · references & locked appearance{" "}
+        Look & characters · reference pictures{" "}
         {chosen.length ? `· ${chosen.length} selected` : ""}
       </summary>
       <DraftNotice draft={draft}/>
@@ -116,8 +116,9 @@ export function VisualBible({
         attached to each attempt. References guide appearance; they do not
         guarantee identity.
       </p>
+      <label>Overall visual style<textarea rows={2} maxLength={5000} value={style} onChange={e=>draft.setValue(v=>({...v,style:e.target.value}))} placeholder="For example: warm storybook illustration, soft light and rich colors."/></label>
       <label>
-        Locked appearance and style
+        Details to keep consistent
         <textarea
           rows={3}
           value={rules}
@@ -194,15 +195,15 @@ export function VisualBible({
               `/api/projects/${project.id}`,
               {
                 revision: base,
-                settings: { reference_asset_ids: chosen, visual_rules: rules },
+                settings: { reference_asset_ids: chosen, visual_rules: rules,style_guide:style },
               },
               "PATCH",
             );
-            draft.adopt({chosen:p.settings.reference_asset_ids||[],rules:p.settings.visual_rules||''},p.revision);
+            draft.adopt({chosen:p.settings.reference_asset_ids||[],rules:p.settings.visual_rules||'',style:p.settings.style_guide||''},p.revision);
           }, "Visual bible saved. Future jobs use the new references and rules.")
         }
       >
-        Save visual bible
+        Save look & references
       </button>
     </details>
   );
@@ -513,7 +514,7 @@ export function CandidateReview({
   const chosen = images.filter((a) => ids.includes(a.id));
   return (
     <details className="candidate-review">
-      <summary>Compare still candidates</summary>
+      <summary>Compare photo options</summary>
       <p>
         Choose up to four takes. Compare the actual images and approve the one
         that preserves your visual rules.
@@ -554,7 +555,7 @@ export function CandidateReview({
                 )
               }
             >
-              Use and approve
+              Use this photo
             </button>
           </article>
         ))}

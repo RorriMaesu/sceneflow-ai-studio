@@ -4,8 +4,8 @@ import secrets
 import time
 from pathlib import Path
 
-VERSION = '0.10.0'
-PHASE = 'Phase 10 · Guided creation'
+VERSION = '0.11.0'
+PHASE = 'Phase 11 · Clear scene review'
 ROOT = Path(os.environ.get('STUDIO_ROOT', Path(__file__).resolve().parents[2])).resolve()
 PORT = int(os.environ.get('STUDIO_PORT', '8770'))
 for name in ['config', 'database', 'cache', 'temp', 'logs', 'projects', 'backups', 'workflows']:
