@@ -45,6 +45,16 @@ The private proof contains two recurring preset voices across three lines, real 
 
 Sound forms and script edits protect browser drafts. Backups now include casts, lines and revision history, restore under new IDs and keep work paused; bundles with script data use version 2 so older agents reject them safely. Duplicate clicks reuse queued sound requests. Thirteen focused sound/history/backup checks and the production interface build passed locally. CI runs the full regression suite before Pages deployment.
 
+Phase 16's complete suite passed after the restart recovery correction in `e6d25ac480b8c156949bd4b139e1334dc31e61e2`; [verification and Pages deployment passed](https://github.com/RorriMaesu/sceneflow-ai-studio/actions/runs/40575540757). The mixed proof fully decoded: 20 seconds, 1920×1080, 30 fps, 600 frames, stereo 48 kHz sound, five mixed sound tracks.
+
+## Phase 17 — Shows, films, chapters and shared continuity
+
+The creation wizard now distinguishes short videos, shows, movies and music videos. A production contains numbered seasons/episodes or parts/chapters, each with one or more bounded sequence projects. Existing project IDs and media stay usable. Sequence projects are grouped under their production rather than duplicated as standalone home cards.
+
+The Director can propose up to 24 connected episodes/chapters in one bounded outline. Applying a reviewed outline creates empty sequences only. Shared canon, episode start/end states and their revisions enter subsequent scene-planning context. Episode edits and canon saves use revision checks; active jobs keep frozen context. Cast membership comes from database relationships, so sibling episodes share a voice library without allowing unrelated productions to borrow it accidentally.
+
+A real local three-episode outline was generated, reviewed in the browser and applied. All three sequences had zero footage/sound jobs and zero assets; the same cast ID was visible across the three episodes. Six final planning checks passed, including stale outlines, duplicate episode numbers, shared cast with separate scripts, ownership boundaries and revision-protected episode edits. The earlier combined 18-check sound/planning/restart run passed. The production interface build and full CI accompany publication.
+
 ## Remaining phases
 
-17: shows/films and shared continuity. 18: music-video timing, lip-sync and captions. 19: long-form sequences and resumable assembly. 20: conditional LTX and staged updates. These are not claimed as delivered by Phase 16.
+18: music-video timing, lip-sync and captions. 19: long-form sequences and resumable assembly. 20: conditional LTX and staged updates. These are not claimed as delivered by Phase 17.

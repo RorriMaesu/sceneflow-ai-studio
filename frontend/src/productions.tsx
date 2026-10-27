@@ -1,0 +1,48 @@
+import { useState,useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { request } from './api';
+import { useRecoverableDraft,DraftNotice } from './recoverable-draft';
+
+const kinds:Record<string,string>={series:'Show or series',movie:'Movie',music_video:'Music video'};
+
+function EpisodeEditor({episode,productionId,act,refresh}:{episode:any;productionId:string;act:any;refresh:()=>void}){
+  const draft=useRecoverableDraft('episode.'+episode.id,{title:episode.title,summary:episode.summary,start_state:episode.start_state,end_state:episode.end_state},episode.revision,v=>typeof v?.title==='string'&&typeof v?.summary==='string');
+  const labels:Record<string,string>={title:'Title',summary:'What happens?',start_state:'Where the characters begin',end_state:'What changes by the end'};
+  return <details><summary>Edit this episode or chapter</summary><DraftNotice draft={draft}/>{Object.entries(labels).map(([key,label])=><label key={key}>{label}<textarea value={(draft.value as any)[key]} maxLength={key==='title'?160:key==='summary'?4000:2000} onChange={e=>draft.setValue(v=>({...v,[key]:e.target.value}))}/></label>)}<button className="button" disabled={!draft.dirty||draft.conflict||!draft.value.title.trim()} onClick={()=>act(async()=>{const r=await request(`/api/productions/${productionId}/episodes/${episode.id}`,{...draft.value,revision:draft.revision},'PATCH');draft.adopt({title:r.title,summary:r.summary,start_state:r.start_state,end_state:r.end_state},r.revision);refresh();},'Episode details saved. Existing jobs keep their original story inputs.')}>Save episode details</button></details>;
+}
+
+function SharedGuide({production,act,refresh}:{production:any;act:any;refresh:()=>void}){
+  const draft=useRecoverableDraft('production-guide.'+production.id,{canon:production.canon},production.revision,v=>typeof v?.canon==='string');
+  return <details><summary>Shared story guide & continuity</summary><p>Describe the cast, world, style and facts every episode should respect. Each episode keeps its own start and end state. Saved jobs keep the guide they started with.</p><DraftNotice draft={draft}/><label>Story guide<textarea rows={6} maxLength={12000} value={draft.value.canon} onChange={e=>draft.setValue({canon:e.target.value})}/></label><button className="button" disabled={!draft.dirty||draft.conflict} onClick={()=>act(async()=>{const p=await request(`/api/productions/${production.id}/canon`,{revision:draft.revision,canon:draft.value.canon},'PATCH');draft.adopt({canon:p.canon},p.revision);refresh();},'Shared story guide saved.')}>Save story guide</button></details>;
+}
+
+export function ProductionsHub({act,choose,models,focusId}:{act:any;choose:(id:string)=>void;models:any[];focusId?:string}){
+  const list=useQuery<any[]>({queryKey:['productions'],queryFn:()=>request('/api/productions'),refetchInterval:10000});
+  const [selected,setSelected]=useState('');
+  useEffect(()=>{if(focusId)setSelected(focusId);},[focusId]);
+  const detail=useQuery({queryKey:['production',selected],queryFn:()=>request('/api/productions/'+selected),enabled:!!selected,refetchInterval:10000});
+  const draft=useRecoverableDraft('new-production',{title:'',brief:'',purpose:'series'},0,v=>typeof v?.title==='string'&&!!kinds[v.purpose]);
+  const [count,setCount]=useState(6),[season,setSeason]=useState(1),[episodeTitle,setEpisodeTitle]=useState('');
+  const [model,setModel]=useState('');
+  const p=detail.data;
+  const refresh=()=>{detail.refetch();list.refetch();};
+  return <section className="panel sound-studio"><h2>Shows, movies & music videos</h2><p>Plan the whole production, then make it in manageable sequences. Start with a pilot or one sequence before creating the rest.</p>
+    {list.error&&<p role="alert">{list.error.message}</p>}
+    <label>Open a production<select value={selected} onChange={e=>setSelected(e.target.value)}><option value="">Choose a production</option>{list.data?.map(v=><option key={v.id} value={v.id}>{v.title} · {kinds[v.purpose]}</option>)}</select></label>
+    <details><summary>Create a show, movie or music video</summary><DraftNotice draft={draft} savedLabel="Nothing has been created yet."/><label>What are you making?<select value={draft.value.purpose} onChange={e=>draft.setValue(v=>({...v,purpose:e.target.value}))}>{Object.entries(kinds).map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label><label>Name<input value={draft.value.title} maxLength={160} onChange={e=>draft.setValue(v=>({...v,title:e.target.value}))}/></label><label>What is it about?<textarea value={draft.value.brief} maxLength={12000} onChange={e=>draft.setValue(v=>({...v,brief:e.target.value}))}/></label><button className="button primary" disabled={!draft.value.title.trim()} onClick={()=>act(async()=>{const v=await request('/api/productions',draft.value);setSelected(v.id);draft.adopt({title:'',brief:'',purpose:'series'},0);list.refetch();},'Production created. Planning does not start footage generation.')}>Create production</button></details>
+    {detail.error&&<p role="alert">{detail.error.message}</p>}
+    {p&&<><h3>{p.title}</h3><p>{p.brief}</p><SharedGuide key={p.id} production={p} act={act} refresh={refresh}/>
+      <details><summary>Plan {p.purpose==='series'?'a whole season':'the chapters'}</summary><p>The Director proposes an outline for review. It creates no pictures, video or sound.</p><label>{p.purpose==='series'?'Season':'Part'}<input type="number" min="1" max="100" value={season} onChange={e=>setSeason(Number(e.target.value))}/></label><label>{p.purpose==='series'?'Episodes':'Chapters'} in this outline<input type="number" min="1" max="24" value={count} onChange={e=>setCount(Number(e.target.value))}/></label><label>Story helper<select value={model||models[0]?.name||''} onChange={e=>setModel(e.target.value)}>{models.map(m=><option key={m.name} value={m.name}>{m.name}</option>)}</select></label><button className="button" disabled={!models.length||count<1||count>24} onClick={()=>act(()=>request(`/api/productions/${p.id}/outline`,{model:model||models[0]?.name,count,season}),'Outline queued. Review it here when Activity says it is ready.')}>Propose an outline</button></details>
+      {p.outlines.map((o:any)=><article className="setup-tool" key={o.id}><h3>Review proposed outline</h3>{o.body.episodes.map((e:any,i:number)=><div key={i}><strong>{i+1}. {e.title}</strong><p>{e.summary}</p><details><summary>Continuity states</summary><p>Starts: {e.start_state}</p><p>Ends: {e.end_state}</p></details></div>)}<button className="button primary" onClick={()=>act(async()=>{await request(`/api/productions/${p.id}/outlines/${o.id}/apply`,{});refresh();},'Outline added. Each episode starts with an empty sequence; no footage was queued.')}>Use this outline</button></article>)}
+      {p.episodes.map((e:any)=><article className="setup-tool" key={e.id}><h3>{p.purpose==='series'?`Season ${e.season} · Episode ${e.number}`:`Part ${e.season} · Chapter ${e.number}`} · {e.title}</h3><p>{e.summary}</p><EpisodeEditor episode={e} productionId={p.id} act={act} refresh={refresh}/><details><summary>Episode continuity</summary><p>Starts: {e.start_state||'Not specified'}</p><p>Ends: {e.end_state||'Not specified'}</p></details><div className="button-row">{e.sequences.map((s:any)=><button className="button" key={s.id} onClick={()=>choose(s.project_id)}>Open {s.title}</button>)}<button className="button" onClick={()=>act(async()=>{await request(`/api/productions/${p.id}/episodes/${e.id}/sequences`,{title:`Sequence ${e.sequences.length+1}`});refresh();},'Empty sequence added.')}>Add sequence</button></div></article>)}
+      <details><summary>Add an episode or chapter yourself</summary><label>Season or part<input type="number" min="1" max="100" value={season} onChange={e=>setSeason(Number(e.target.value))}/></label><label>Title<input value={episodeTitle} maxLength={160} onChange={e=>setEpisodeTitle(e.target.value)}/></label><button className="button" disabled={!episodeTitle.trim()} onClick={()=>act(async()=>{const number=Math.max(0,...p.episodes.filter((e:any)=>e.season===season).map((e:any)=>e.number))+1;await request(`/api/productions/${p.id}/episodes`,{season,number,title:episodeTitle});setEpisodeTitle('');refresh();},'Episode added with an empty sequence.')}>Add to {p.purpose==='series'?'season':'part'} {season}</button></details>
+    </>}
+  </section>;
+}
+
+export function ProductionNavigator({projectId,choose}:{projectId:string;choose:(id:string)=>void}){
+  const query=useQuery({queryKey:['project-production',projectId],queryFn:()=>request(`/api/projects/${projectId}/production`)});
+  const p=query.data?.production;
+  if(!p)return null;
+  return <section className="panel sound-studio"><strong>{p.title}</strong><label>Episode / chapter / sequence<select value={projectId} onChange={e=>choose(e.target.value)}>{p.episodes.flatMap((e:any)=>e.sequences.map((s:any)=><option key={s.id} value={s.project_id}>{e.season}.{e.number} · {e.title} · {s.title}</option>))}</select></label><p>Cast voices and the story guide are shared across this production. Scenes and edits belong to the selected sequence.</p></section>;
+}

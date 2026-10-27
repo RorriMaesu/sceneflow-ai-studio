@@ -16,7 +16,7 @@ def migrate(store=None):
 
 def view(project_id):
     migrate();db.project(project_id)
-    return {'cast':db.all('SELECT * FROM cast_members WHERE project_id=? ORDER BY created',(project_id,)),
+    return {'cast':db.all('SELECT * FROM cast_members WHERE project_id=? ORDER BY created',(cast_scope(project_id),)),
             'lines':db.all('SELECT * FROM script_lines WHERE project_id=? ORDER BY created',(project_id,)),
             'takes':[{**r,'body':json.loads(r['body'])} for r in db.all('SELECT * FROM sound_takes WHERE project_id=? ORDER BY created DESC',(project_id,))]}
 
@@ -26,14 +26,14 @@ def add_cast(project_id,name,voice='Ryan',language='English'):
     migrate();db.project(project_id)
     if voice not in VOICES or language not in LANGUAGES:raise ValueError('Choose an available voice and language.')
     identifier=uid()
-    db.execute('INSERT INTO cast_members VALUES(?,?,?,?,?,?,?)',(identifier,project_id,name,voice,language,1,now()))
+    db.execute('INSERT INTO cast_members VALUES(?,?,?,?,?,?,?)',(identifier,cast_scope(project_id),name,voice,language,1,now()))
     return db.one('SELECT * FROM cast_members WHERE id=?',(identifier,))
 
 
 def save_line(project_id,values,identifier=None,revision=None):
     migrate();db.project(project_id)
     if values.get('scene_id') and db.scene(values['scene_id'])['project_id']!=project_id:raise ValueError('Choose a scene in this production.')
-    if values.get('cast_id') and not db.one('SELECT id FROM cast_members WHERE id=? AND project_id=?',(values['cast_id'],project_id)):raise ValueError('Choose a character in this production.')
+    if values.get('cast_id') and not db.one('SELECT id FROM cast_members WHERE id=? AND project_id=?',(values['cast_id'],cast_scope(project_id))):raise ValueError('Choose a character in this production.')
     identifier=identifier or uid()
     with db.connect(True) as con:
         previous=con.execute('SELECT * FROM script_lines WHERE id=? AND project_id=?',(identifier,project_id)).fetchone()
@@ -50,7 +50,7 @@ def queue_line(project_id,identifier,automatic=False):
     migrate()
     row=db.one('SELECT * FROM script_lines WHERE id=? AND project_id=?',(identifier,project_id))
     if not row:raise KeyError('Script line not found')
-    cast=db.one('SELECT * FROM cast_members WHERE id=? AND project_id=?',(row['cast_id'],project_id)) if row['cast_id'] else None
+    cast=db.one('SELECT * FROM cast_members WHERE id=? AND project_id=?',(row['cast_id'],cast_scope(project_id))) if row['cast_id'] else None
     takes=db.one('SELECT COUNT(*) n FROM sound_takes WHERE line_id=?',(identifier,))['n']
     return queue_sound(project_id,'voices-small',{'text':row['text'],'voice':cast['voice'] if cast else 'Ryan','language':cast['language'] if cast else 'English',
                        'line_id':identifier,'line_revision':row['revision'],'cast_revision':cast['revision'] if cast else None,'seed':26102026+takes},row['scene_id'],automatic=automatic)
@@ -72,6 +72,11 @@ def retime(project_id):
         start=cursor if line['auto_timing'] else line['start']
         asset=db.one('SELECT metadata FROM assets WHERE id=? AND project_id=?',(line['selected_asset_id'],project_id)) if line['selected_asset_id'] else None
         cursor=start+(json.loads(asset['metadata'])['duration'] if asset else 0)+.25
+
+
+def cast_scope(project_id):
+    from .productions import cast_scope as scope
+    return scope(project_id,db)
 
 
 def place(project_id,asset_id,start=0):

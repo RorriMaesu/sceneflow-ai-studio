@@ -79,6 +79,7 @@ import { ActivityPage } from "./activity-page";
 import { FriendlySettings } from "./settings-page";
 import { StudioSetup } from "./studio-setup";
 import { SoundStudio } from "./sound-studio";
+import { ProductionsHub,ProductionNavigator } from './productions';
 import { ProjectSteps, NextStep, StoryGuide, HelpPage } from "./guided-project";
 import { PAGE_NAMES, STEPS } from "./flow";
 import { NewVideoWizard } from "./new-video";
@@ -306,11 +307,13 @@ function Studio() {
   const [selected, setSelected] = useState("");
   const [pairOpen, setPairOpen] = useState(!!initialPairCode);
   const [newOpen, setNewOpen] = useState(false);
+  const [productionFocus,setProductionFocus]=useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [toast, setToast] = useState("");
   const [problem, setProblem] = useState("");
   const [busy, setBusy] = useState(false);
+  const actionBusy=useRef(false);
   const [sidebar, setSidebar] = useState(false);
   const boot = useQuery<Bootstrap>({
     queryKey: ["bootstrap", connection.token],
@@ -353,6 +356,8 @@ function Studio() {
   };
   useCompletionNotifications(jobs, notify);
   async function act(fn: () => Promise<any>, success = "Saved") {
+    if(actionBusy.current)return;
+    actionBusy.current=true;
     setBusy(true);
     setProblem("");
     try {
@@ -363,6 +368,7 @@ function Studio() {
     } catch (e) {
       setProblem((e as Error).message);
     } finally {
+      actionBusy.current=false;
       setBusy(false);
     }
   }
@@ -463,6 +469,9 @@ function Studio() {
     example = false,
     options?: NewVideoOptions,
   ) {
+    if(options?.purpose && options.purpose!=='short'){
+      return act(async()=>{const p=await request('/api/productions',{title,brief,purpose:options.purpose});setProductionFocus(p.id);go('Overview');return p;},'Production created. Plan its episodes or chapters before making footage.');
+    }
     const created = await act(
       async () => {
         let p = await request<Project>("/api/projects", {
@@ -665,7 +674,7 @@ function Studio() {
             connection.token ? setNewOpen(true) : setPairOpen(true)
           }
         >
-          + Create a video
+          + Create a production
         </button>
         <nav>
           {["workspace", "production", "studio"]
@@ -821,7 +830,7 @@ function Studio() {
                           }
                         >
                           <Plus size={17} />
-                          Create a video
+                          Create a production
                         </Button>
                         <Button onClick={() => go("Help")}>How it works</Button>
                       </div>
@@ -854,11 +863,12 @@ function Studio() {
                       </div>
                     </div>
                   </section>
+                  {data && <ProductionsHub act={act} choose={choose} models={data.services.ollama.models.filter((m:any)=>!m.remote_host)} focusId={productionFocus}/>}
                   <section className="section">
                     <div className="section-heading">
                       <div>
                         <h2>
-                          My videos <span>{data?.projects.length || 0}</span>
+                          Standalone videos <span>{data?.projects.filter(p=>!p.production_id).length || 0}</span>
                         </h2>
                         <p>Every great story starts somewhere.</p>
                       </div>
@@ -872,12 +882,12 @@ function Studio() {
                         }
                       >
                         <Plus size={16} />
-                        Create a video
+                        Create a production
                       </Button>
                     </div>
-                    {data?.projects.length ? (
+                    {data?.projects.some(p=>!p.production_id) ? (
                       <div className="project-grid">
-                        {data.projects.map((p, index) => (
+                        {data.projects.filter(p=>!p.production_id).map((p, index) => (
                           <button
                             key={p.id}
                             className="project-card"
@@ -1056,6 +1066,7 @@ function Studio() {
                   active={active}
                   choose={choose}
                   goSetup={()=>go('Setup')}
+                  openProduction={(id)=>{setProductionFocus(id);go('Overview');}}
                 />
               ) : page === "Setup" ? (
                 data ? <StudioSetup act={act} done={() => go("Overview")} /> : <Empty title="Connect your studio first" description="Start SceneFlow on this PC, then connect this browser." action={<Button primary onClick={() => setPairOpen(true)}>Connect</Button>} />
@@ -1093,7 +1104,7 @@ function Studio() {
                         onClick={() => go("Overview")}
                       >
                         <ArrowLeft size={14} />
-                        My videos
+                        My productions
                       </button>
                       <h1>{project.title}</h1>
                       <p className="project-brief-summary">
@@ -1127,6 +1138,7 @@ function Studio() {
                     </div>
                   </div>
                   <ProjectStatus project={project} jobs={jobs} act={act} />
+                  <ProductionNavigator projectId={project.id} choose={choose}/>
                   <ProjectSteps project={project} page={page} go={go} />
                   <NextStep
                     project={project}

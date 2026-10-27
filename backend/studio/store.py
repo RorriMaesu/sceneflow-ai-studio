@@ -92,7 +92,11 @@ class Store:
 
     def projects(self):
         rows = self.all('SELECT * FROM projects WHERE archived=0 ORDER BY updated DESC')
+        members={}
+        if self.one("SELECT name FROM sqlite_master WHERE type='table' AND name='production_sequences'"):
+            members={r['project_id']:r['production_id'] for r in self.all('SELECT s.project_id,e.production_id FROM production_sequences s JOIN production_episodes e ON e.id=s.episode_id')}
         for row in rows:
+            row['production_id']=members.get(row['id'])
             row['settings'] = json.loads(row['settings'])
             row['scene_count'] = self.one('SELECT COUNT(*) n FROM scenes WHERE project_id=?', (row['id'],))['n']
         return rows

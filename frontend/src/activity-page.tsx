@@ -31,6 +31,7 @@ export function ActivityPage({
   act,
   choose,
   goSetup,
+  openProduction,
 }: {
   projects: Project[];
   jobs: Job[];
@@ -38,6 +39,7 @@ export function ActivityPage({
   active?: string;
   choose: (id: string) => void;
   goSetup?: () => void;
+  openProduction?: (id:string) => void;
 }) {
   const [scope, setScope] = useState("all"),
     [showDone, setShowDone] = useState(false),
@@ -55,7 +57,7 @@ export function ActivityPage({
         <label>
           Show activity for
           <select value={scope} onChange={(e) => setScope(e.target.value)}>
-            <option value="all">All my videos</option>
+            <option value="all">All my productions</option>
             {projects.map((p) => (
               <option value={p.id} key={p.id}>
                 {p.title}
@@ -92,9 +94,9 @@ export function ActivityPage({
                 (j.snapshot.setup_probe ? "Creation tool sample" : "Saved video")}
             </h3>
             <p>
-              {j.snapshot.setup_probe ? "Setup check: " : "Video: "}
+              {j.snapshot.setup_probe ? "Setup check: " : j.kind==='outline' ? "Production: " : "Video: "}
               {projects.find((p) => p.id === j.project_id)?.title ||
-                (j.snapshot.setup_probe ? "Voices, music or effects" : "Archived video")}
+                (j.snapshot.setup_probe ? "Voices, music or effects" : j.kind==='outline' ? j.snapshot.title : "Archived video")}
             </p>
           </div>
           {!["completed", "superseded", "cancelled"].includes(j.status) && (
@@ -111,8 +113,8 @@ export function ActivityPage({
             </p>
           )}
           <div className="button-row">
-            <button className="button" onClick={() => j.snapshot.setup_probe && goSetup ? goSetup() : choose(j.project_id)}>
-              {j.snapshot.setup_probe ? "Open tool setup" : "Open video"}
+            <button className="button" onClick={() => j.snapshot.setup_probe && goSetup ? goSetup() : j.kind==='outline' && openProduction ? openProduction(j.snapshot.production_id) : choose(j.project_id)}>
+              {j.snapshot.setup_probe ? "Open tool setup" : j.kind==='outline' ? "Open production plan" : "Open video"}
             </button>
             {["failed", "cancelled"].includes(j.status) && (
               <button

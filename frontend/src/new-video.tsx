@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useRecoverableDraft, DraftNotice } from "./recoverable-draft";
 import type { Mode } from "./types";
 export interface NewVideoOptions {
+  purpose?: 'short'|'series'|'movie'|'music_video';
   title: string;
   brief: string;
   length: number;
@@ -24,6 +25,7 @@ export function NewVideoWizard({
 }) {
   const model = models.find((m) => !m.remote_host)?.name || "";
   const empty = {
+    purpose:'short' as const,
     title: "",
     brief: "",
     length: 15,
@@ -62,7 +64,7 @@ export function NewVideoWizard({
         >
           ×
         </button>
-        <h2 id="new-title">Let's make your video</h2>
+        <h2 id="new-title">What will you make?</h2>
         <p>
           Describe what you have in mind. You can change everything as you go.
         </p>
@@ -95,8 +97,9 @@ export function NewVideoWizard({
             }
           }}
         >
+          <label>What are you making?<select value={form.purpose||'short'} onChange={e=>change('purpose',e.target.value)}><option value="short">Short video</option><option value="series">Show or series</option><option value="movie">Movie</option><option value="music_video">Music video</option></select></label>
           <label>
-            Video name
+            Name
             <input
               autoFocus
               required
@@ -107,17 +110,17 @@ export function NewVideoWizard({
             />
           </label>
           <label>
-            What happens in your video?
+            What is it about?
             <textarea
-              required={form.plan && !!model}
-              maxLength={29000}
+              required={(form.purpose||'short')==='short' && form.plan && !!model}
+              maxLength={(form.purpose||'short')==='short'?29000:12000}
               rows={3}
               value={form.brief}
               onChange={(e) => change("brief", e.target.value)}
               placeholder="Describe the characters, setting and action in everyday words."
             />
           </label>
-          <div className="settings-grid">
+          {(form.purpose||'short')==='short' && <><div className="settings-grid">
             <label>
               Approximate length
               <select
@@ -202,15 +205,13 @@ export function NewVideoWizard({
               </select>
             </label>
           </details>
-          <p>
-            The length is a planning target. You'll review the story before
-            creating photos or clips. Sound can be added in Edit.
-          </p>
+          </>}
+          <p>{(form.purpose||'short')==='short' ? "The length is a planning target. Review the story before creating photos or clips. Add voices and music in Story or Edit." : "Plan your whole production first. Episodes and chapters use the same simple workflow, one manageable sequence at a time. Creating this plan starts no footage or sound."}</p>
           {error && <p role="alert">{error}</p>}
           <button type="submit" className="button primary" disabled={busy}>
             {busy
-              ? "Creating your video…"
-              : form.plan && model
+              ? "Creating your production…"
+              : (form.purpose||'short')!=='short' ? "Create production" : form.plan && model
                 ? "Create & plan scenes"
                 : "Create video"}
           </button>

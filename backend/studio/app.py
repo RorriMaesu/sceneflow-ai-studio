@@ -324,6 +324,8 @@ from .routes_setup import router as setup_router
 app.include_router(setup_router)
 from .routes_audio import router as audio_router
 app.include_router(audio_router)
+from .productions import router as productions_router
+app.include_router(productions_router)
 
 
 @app.get('/{path:path}')

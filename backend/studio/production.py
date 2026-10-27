@@ -304,7 +304,7 @@ class Dispatcher:
         from .director import migrate as migrate_director
         migrate_director()
         db.execute("UPDATE director_commands SET status='needs_attention',error='Agent restarted during a reviewed command. Inspect queued work before requesting it again.' WHERE status='running'")
-        db.execute("UPDATE jobs SET status='needs_attention',error='Agent restarted during a local AI request. Review any saved proposal before explicitly retrying.' WHERE status='running' AND kind IN ('plan','director','qa')")
+        db.execute("UPDATE jobs SET status='needs_attention',error='Agent restarted during a local AI request. Review any saved proposal before explicitly retrying.' WHERE status='running' AND kind IN ('plan','director','qa','outline')")
         for job in db.all("SELECT id FROM jobs WHERE status='running' AND kind='export'"):
             from .storage import export_folder
             marker=export_folder(job['id'])/'worker.json'
@@ -378,7 +378,8 @@ class Dispatcher:
             if job['scene_id'] and db.scene(job['scene_id'])['body'].get('disabled'):
                 continue
             setup_probe = snap.get('setup_probe') and json.loads(project['settings']).get('setup_samples') and job['kind'] in {'speech','music','effects'}
-            if (control['paused'] and not explicit) or (project['archived'] and not setup_probe) or (project['mode']=='manual' and snap.get('automatic')):
+            outline_root = job['kind']=='outline' and json.loads(project['settings']).get('production_root')
+            if (control['paused'] and not explicit) or (project['archived'] and not setup_probe and not outline_root) or (project['mode']=='manual' and snap.get('automatic')):
                 continue
             config=json.loads(project['settings'])
             budget=float(config.get('run_budget_minutes',0))
@@ -707,7 +708,10 @@ class Dispatcher:
                     break
 
     async def execute_other(self,job,snapshot):
-        if job['kind'] in ['speech','music','effects']:
+        if job['kind']=='outline':
+            from .productions import execute_outline
+            await execute_outline(job,snapshot)
+        elif job['kind'] in ['speech','music','effects']:
             from .audio_engine import execute
             await execute(job,snapshot)
         elif job['kind'] in ['plan','director']:

@@ -28,6 +28,7 @@ export interface Scene {
   video_current?: boolean;
 }
 export interface Project {
+  production_id?: string | null;
   id: string;
   title: string;
   brief: string;

@@ -92,11 +92,15 @@ def migrate():
 
 def context(project,selected=None):
     from .adapters import registry
+    from .productions import membership
+    member=membership(project['id'],db)
+    shared={k:member[k] for k in ['production_title','purpose','canon_revision','season','number','title','start_state','end_state']} if member else None
+    if shared:shared['canon']=member['canon'][:6000]
     # A compact scene index preserves identity without sending every full prompt.
     ordered=sorted(project['scenes'],key=lambda s:s['id']!=selected)
     index=[{'id':s['id'],'revision':s['revision'],'title':s['title'][:80],'summary':s['body'].get('summary','')[:70]} for s in ordered[:40]]
     detailed=[s for s in project['scenes'] if s['id']==selected][:1]
-    return {'title':project['title'],'brief':project['brief'][:3000],'style_guide':project['settings'].get('style_guide','')[:1500],'characters':str(project['settings'].get('characters',[]))[:1000],'scene_index':index,'visual_rules':project['settings'].get('visual_rules','')[:1500],'reference_asset_ids':project['settings'].get('reference_asset_ids',[]),'production_mode':project['mode'],'selected_assets':[{'scene_id':s['id'],'still':s['selected_image_id'],'video':s['selected_video_id']} for s in ordered[:40]],'available_workflows':[{'id':w['id'],'task':w['task'],'status':w['status']} for w in registry.list()],'omitted_scenes':max(0,len(ordered)-40),'selected_scenes':[{'id':s['id'],'body':{k:str(v)[:1200] for k,v in s['body'].items() if k in ['summary','image_prompt','video_prompt']}} for s in detailed]}
+    return {'shared_production':shared,'title':project['title'],'brief':project['brief'][:3000],'style_guide':project['settings'].get('style_guide','')[:1500],'characters':str(project['settings'].get('characters',[]))[:1000],'scene_index':index,'visual_rules':project['settings'].get('visual_rules','')[:1500],'reference_asset_ids':project['settings'].get('reference_asset_ids',[]),'production_mode':project['mode'],'selected_assets':[{'scene_id':s['id'],'still':s['selected_image_id'],'video':s['selected_video_id']} for s in ordered[:40]],'available_workflows':[{'id':w['id'],'task':w['task'],'status':w['status']} for w in registry.list()],'omitted_scenes':max(0,len(ordered)-40),'selected_scenes':[{'id':s['id'],'body':{k:str(v)[:1200] for k,v in s['body'].items() if k in ['summary','image_prompt','video_prompt']}} for s in detailed]}
 
 
 async def model_details(model,client=None):

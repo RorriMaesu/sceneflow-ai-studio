@@ -7,7 +7,7 @@ export const STEPS = [
   ["Exports", "Save video"],
 ] as const;
 export const PAGE_NAMES: Record<string, string> = {
-  Overview: "My videos",
+  Overview: "My productions",
   Storyboard: "Story",
   "Image Studio": "Look & photos",
   "Video Studio": "Motion",

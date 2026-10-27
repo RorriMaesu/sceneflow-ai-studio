@@ -2,7 +2,7 @@
 
 A local filmmaking studio for planning scenes, generating starting stills, animating their exact images, reviewing takes and assembling a movie. The public React interface connects to an authenticated Windows agent on your computer.
 
-**Release 0.16 — dialogue, music, songs and sound effects.** Add characters and editable dialogue in Story or Edit, create speech, music or ambience, listen to takes and place them in your edit. Conversation timing follows recorded durations; music can duck under dialogue. Setup separates model downloads, private program setup and a successful sample on this PC, with separate singing and longer-cue checks. Exact versions, hashes and the shared graphics queue preserve reproducibility. [Full studio release ledger](docs/FULL_SUITE_RELEASES.md). LTX remains deferred.
+**Release 0.17 — shows, movies and shared story planning.** Create a short video, series, movie or music video. A production holds seasons/episodes or chapters and manageable sequences. Episodes share a cast and story guide while keeping their scenes and edits separate. The local Director can propose a whole season for review without starting footage. Speech, music and effects remain available through the qualified sound workflow. [Full studio release ledger](docs/FULL_SUITE_RELEASES.md). LTX remains deferred.
 
 - [Published interface](https://rorrimaesu.github.io/sceneflow-ai-studio/)
 - [Verification ledger](docs/EVIDENCE.md)
