@@ -4,6 +4,82 @@ import { request, upload, useConnection } from "./api";
 import type { Asset, Project, Scene } from "./types";
 import { AssetQuality } from "./quality-panel";
 
+export function SceneKeyframes({
+  scene,
+  project,
+  body,
+  change,
+  renderMedia,
+}: {
+  scene: Scene;
+  project: Project;
+  body: any;
+  change: (key: string, value: any) => void;
+  renderMedia: (a: Asset) => React.ReactNode;
+}) {
+  const assets = useQuery<Asset[]>({
+    queryKey: ["project-assets", project.id],
+    queryFn: () => request("/api/assets?project_id=" + project.id),
+    refetchInterval: 15000,
+  });
+  const images =
+    assets.data?.filter(
+      (a) => a.kind === "image" && a.metadata.role !== "edit_mask",
+    ) || [];
+  const ending = images.find((a) => a.id === body.ending_asset_id);
+  const starting = scene.assets.find((a) => a.id === scene.selected_image_id);
+  return (
+    <details className="scene-keyframes">
+      <summary>Starting & ending frames</summary>
+      <p>
+        Choose an optional ending image from this project. The native Wan
+        first/last adapter guides both ends while keeping the selected starting
+        still. It reuses the installed models.
+      </p>
+      <label>
+        Ending frame
+        <select
+          value={body.ending_asset_id || ""}
+          onChange={(e) => change("ending_asset_id", e.target.value || null)}
+        >
+          <option value="">No ending frame · ordinary animation</option>
+          {images.map((a) => (
+            <option key={a.id} value={a.id}>
+              {project.scenes.find((s) => s.id === a.scene_id)?.title ||
+                a.metadata.original_name ||
+                "Project reference"}{" "}
+              · {a.id.slice(0, 8)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button
+        className="button"
+        disabled={!scene.selected_image_id}
+        onClick={() => change("ending_asset_id", scene.selected_image_id)}
+      >
+        Use the starting still as the loop ending
+      </button>
+      <div className="comparison-pair">
+        <div>
+          <p>Starting still</p>
+          {starting && renderMedia(starting)}
+        </div>
+        <div>
+          <p>Ending target</p>
+          {ending ? renderMedia(ending) : <p className="muted">Optional</p>}
+        </div>
+      </div>
+      <p className="muted">
+        Save scene settings before animating. Ending-frame changes invalidate
+        animation inputs while preserving the still and earlier takes. Matching
+        conditioning images cannot guarantee exact ending pixels or a seamless
+        loop.
+      </p>
+    </details>
+  );
+}
+
 export function VisualBible({
   project,
   act,
@@ -153,8 +229,14 @@ export function CorrectionCanvas({
   renderMedia: (a: Asset) => React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const [expanded,setExpanded]=useState(false);
-  useEffect(()=>{const close=(event:KeyboardEvent)=>{if(event.key==='Escape')setExpanded(false)};if(expanded)window.addEventListener('keydown',close);return()=>window.removeEventListener('keydown',close)},[expanded]);
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    const close = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setExpanded(false);
+    };
+    if (expanded) window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [expanded]);
   const canvas = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
   const last = useRef<[number, number] | null>(null);
@@ -215,13 +297,15 @@ export function CorrectionCanvas({
   };
   return (
     <details
-      className={'correction-panel'+(expanded?' correction-expanded':'')}
+      className={"correction-panel" + (expanded ? " correction-expanded" : "")}
       onToggle={(e) => setOpen(e.currentTarget.open)}
     >
       <summary>Correct this still · preserve the original</summary>
       {open && (
         <>
-          <button className="button" onClick={()=>setExpanded(v=>!v)}>{expanded?'Return to scene':'Expand editor'}</button>
+          <button className="button" onClick={() => setExpanded((v) => !v)}>
+            {expanded ? "Return to scene" : "Expand editor"}
+          </button>
           <p>
             Describe a change. Paint white over the area to replace. Black areas
             are copied from the original after generation and checked pixel by

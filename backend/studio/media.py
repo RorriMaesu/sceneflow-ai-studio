@@ -217,7 +217,7 @@ async def collect_outputs(client, job, result, entry):
                     async for chunk in response.aiter_bytes(1024*1024):
                         file.write(chunk)
             import asyncio
-            provenance_inputs={k:snapshot[k] for k in ['reference_assets','mask_asset_id','mask_sha256','edit_operation'] if k in snapshot}
+            provenance_inputs={k:snapshot[k] for k in ['reference_assets','mask_asset_id','mask_sha256','edit_operation','edit_strength','ending_asset_id','ending_sha256'] if k in snapshot}
             asset = await asyncio.to_thread(add_asset, job['project_id'], job['scene_id'], job['id'], kind, path, snapshot.get('source_asset_id'), {'comfy_prompt_id': job['comfy_prompt_id'], 'scene_revision_id': snapshot['scene_revision_id'], 'workflow_hash': snapshot['workflow_hash'], 'submitted_workflow_hash':provenance.get('workflow_hash'),'software':provenance.get('software',{}),'output_reference':{'node':str(key),**params}, 'source_sha256': snapshot.get('source_sha256'),**provenance_inputs})
             collected.append(asset)
             path.unlink(missing_ok=True)

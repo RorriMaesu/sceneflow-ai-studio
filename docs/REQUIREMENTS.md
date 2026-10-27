@@ -13,7 +13,8 @@
 | Backup and recovery (23–24) | Bundles, hash checks, new IDs, paused restores, quarantine, path/reference checks and private diagnostics | Media-backed restore tests; traversal rejection; original project preserved |
 | References and correction (9, 12) | Visual bible, up to three owned image references, immutable hashes, masked source-latent correction, brush undo/zoom, before/after and candidate comparison | Four real reference stills; refined local correction; unchanged outside-mask pixels verified |
 | Optional QA (34–35, 39) | Off by default; local vision discovery; sampled frames; separate technical results; bounded retries; manual precedence; contradictory-advice guard | Real still and three-frame video reviews; simulated retries/overrides; advisory scores |
-| Advanced workflows (11–12, 17) | Capability explanations and guarded import mechanism | LTX audio/conditioning, ending-keyframe controls, outpainting, neural upscaling and specialized video editing require separate configuration/verification |
+| Keyframes and studio care | Owned first/last conditioning, immutable hashes, video-only invalidation; optional Windows tray; reviewed reversible export-scratch quarantine | Real 33-frame Wan clip; restore/hash tests; tray assembly/path checks only; OS alert delivery unverified |
+| Advanced workflows (11–12, 17) | Capability explanations and guarded import mechanism | LTX downloads declined; outpainting, neural upscaling and specialized video editing require separate configuration/verification |
 | Delivery (25–29) | Source, setup/start/stop scripts, deployment, tests, architecture, evidence and troubleshooting | Private two-scene proof and complete eight-scene movie; per-phase Pages deployments |
 
 Installed filenames, ready graphs, AI scores and started deployments are kept distinct from successful generation and verified releases.

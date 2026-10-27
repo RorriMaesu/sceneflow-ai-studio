@@ -67,7 +67,16 @@ def qwen_reference_graph(s,prefix,images,mask=None):
     return graph
 
 
+def wan_first_last_graph(s,prefix,image,ending):
+    graph=wan_graph(s,prefix,image)
+    graph['ending']=node('LoadImage',image=ending)
+    graph['condition']['class_type']='WanFirstLastFrameToVideo'
+    graph['condition']['inputs']['end_image']=['ending',0]
+    return graph
+
+
 BUILTINS = [
+    {'id':'wan22-first-last','name':'Wan 2.2 · First & last frame','family':'Wan 2.2','task':'image_to_video','capabilities':{'negative_prompt':True,'source_image':True,'first_last_frame':True,'audio':False},'constraints':{'multiple':16,'frames_multiple':4,'frames_offset':1,'max_width':832,'max_height':480,'max_frames':81},'mappings':{},'output_nodes':['save']},
     {'id':'qwen-image-21-reference','name':'Qwen Image 2.1 · References & correction','family':'Qwen Image 2.1','task':'text_to_image','capabilities':{'negative_prompt':True,'reference_images':True,'image_editing':True,'masked_composite':True,'audio':False},'constraints':{'multiple':32,'max_width':2048,'max_height':2048},'mappings':{},'output_nodes':['save']},
     {'id': 'qwen-image-21', 'name': 'Qwen Image 2.1 · INT8', 'family': 'Qwen Image 2.1', 'task': 'text_to_image', 'capabilities': {'negative_prompt': True, 'reference_images': False, 'image_editing':False, 'audio': False}, 'constraints': {'multiple': 32, 'max_width': 2048, 'max_height': 2048}, 'mappings': {}, 'output_nodes': ['save']},
     {'id': 'wan22-i2v', 'name': 'Wan 2.2 · I2V A14B FP8', 'family': 'Wan 2.2', 'task': 'image_to_video', 'capabilities': {'negative_prompt': True, 'source_image': True, 'audio': False, 'first_last_frame': False}, 'constraints': {'multiple': 16, 'frames_multiple': 4, 'frames_offset': 1, 'max_width': 832, 'max_height': 480, 'max_frames': 81}, 'mappings': {}, 'output_nodes': ['save']},
@@ -127,7 +136,7 @@ class Registry:
             self.info = response.json()
         for entry in BUILTINS:
             previous = db.one('SELECT body FROM workflow_registry WHERE id=?', (entry['id'],))
-            preview=qwen_reference_graph(DUMMY,'sceneflow/preview',['reference.png']) if entry['id']=='qwen-image-21-reference' else qwen_graph(DUMMY,'sceneflow/preview') if entry['task']=='text_to_image' else wan_graph(DUMMY,'sceneflow/preview','example.png')
+            preview=wan_first_last_graph(DUMMY,'sceneflow/preview','example.png','ending.png') if entry['id']=='wan22-first-last' else qwen_reference_graph(DUMMY,'sceneflow/preview',['reference.png']) if entry['id']=='qwen-image-21-reference' else qwen_graph(DUMMY,'sceneflow/preview') if entry['task']=='text_to_image' else wan_graph(DUMMY,'sceneflow/preview','example.png')
             data = {**entry, 'graph': preview}
             if previous:
                 old = json.loads(previous['body'])
@@ -153,7 +162,7 @@ class Registry:
             raise ValueError('The selected workflow has not been discovered. Refresh the Model Library.')
         return json.loads(row['body'])
 
-    def build(self, identifier, snapshot, prefix, image=None, references=None, mask=None):
+    def build(self, identifier, snapshot, prefix, image=None, references=None, mask=None,ending=None):
         entry = copy.deepcopy(snapshot.get('workflow_definition') or self.get(identifier))
         if entry['status'] != 'ready':
             raise ValueError('The selected workflow is unavailable: '+'; '.join(entry['reasons']))
@@ -163,7 +172,10 @@ class Registry:
             raise ValueError('Resolution is outside this verified workflow preset. Use dimensions supported by the Model Library.')
         if entry['task'] == 'image_to_video' and (snapshot['frames'] > c.get('max_frames', 81) or (snapshot['frames']-c.get('frames_offset', 0)) % c.get('frames_multiple', 1)):
             raise ValueError('The frame count does not match this workflow’s validated limits.')
-        if identifier == 'qwen-image-21-reference':
+        if identifier == 'wan22-first-last':
+            if not image:raise ValueError('Choose a starting still before animation.')
+            graph=wan_first_last_graph(snapshot,prefix,image,ending or 'ending.png')
+        elif identifier == 'qwen-image-21-reference':
             graph=qwen_reference_graph(snapshot,prefix,references or ['reference.png'],mask)
         elif identifier == 'qwen-image-21':
             graph = qwen_graph(snapshot, prefix)

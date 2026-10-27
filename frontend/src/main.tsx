@@ -72,6 +72,7 @@ import { TimelineEditor } from "./timeline-editor";
 import { BackupPanel, WorkflowImporter, SceneHistory } from "./tools-panels";
 import { AssetQuality } from "./quality-panel";
 import { ProductionInsights } from "./production-insights";
+import { MaintenancePanel } from "./maintenance-panel";
 import {
   ReadinessCoach,
   NotificationSettings,
@@ -82,6 +83,7 @@ import {
   VisualBible,
   CorrectionCanvas,
   CandidateReview,
+  SceneKeyframes,
 } from "./continuity-panel";
 
 const client = new QueryClient({
@@ -967,7 +969,8 @@ function Studio() {
                       </Badge>
                       <span className="muted">
                         {project.scenes.length} scenes ·{" "}
-                        {(project.timeline?.settings.audio_mode || project.settings.audio_mode) === "silent"
+                        {(project.timeline?.settings.audio_mode ||
+                          project.settings.audio_mode) === "silent"
                           ? "Silent final cut"
                           : "Sound enabled in final cut"}
                         {" · AI QA " +
@@ -1785,6 +1788,13 @@ function SceneInspector({
                 onChange={(e) => change("seed", Number(e.target.value))}
               />
             </label>
+            <SceneKeyframes
+              scene={scene}
+              project={project}
+              body={body}
+              change={change}
+              renderMedia={(a) => <Media asset={a} controls />}
+            />
             <Button
               primary
               disabled={!dirty}
@@ -2157,7 +2167,7 @@ function DirectorPage({
     refetchInterval: 4000,
   });
   const [autoContinue, setAutoContinue] = useState(false);
-  const [allowOperations,setAllowOperations]=useState(false);
+  const [allowOperations, setAllowOperations] = useState(false);
   const [model, setModel] = useState(project.settings.llm || "");
   const [count, setCount] = useState(4);
   return (
@@ -2255,7 +2265,7 @@ function DirectorPage({
               await request(`/api/projects/${project.id}/director`, {
                 model,
                 message: text,
-                allow_operations:allowOperations,
+                allow_operations: allowOperations,
                 scene_id: selectedScene || null,
               });
               setText("");
@@ -2263,7 +2273,14 @@ function DirectorPage({
             }, "Director request queued. Follow progress in Generation Queue.");
           }}
         >
-          <label><input type="checkbox" checked={allowOperations} onChange={e=>setAllowOperations(e.target.checked)}/> Include generation and queue command proposals</label>
+          <label>
+            <input
+              type="checkbox"
+              checked={allowOperations}
+              onChange={(e) => setAllowOperations(e.target.checked)}
+            />{" "}
+            Include generation and queue command proposals
+          </label>
           <textarea
             aria-label="Message your Director"
             rows={4}
@@ -2687,6 +2704,7 @@ function SettingsPage({
         </a>
       </div>
       {featurePhase >= 4 && <BackupPanel project={project} act={act} />}
+      {featurePhase >= 8 && <MaintenancePanel data={data} act={act} />}
       {featurePhase >= 5 && (
         <section className="panel settings-panel">
           <h3>Setup & readiness</h3>

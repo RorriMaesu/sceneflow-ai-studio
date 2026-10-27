@@ -52,7 +52,9 @@ def stage_signature(scene,project,kind,source_id=None):
     inputs={'positive_prompt':prompt,'negative_prompt':body.get('negative_prompt',''),'workflow_id':workflow,'base_seed':int(body.get('seed',26102026)),'width':int(config.get('width',640)),'height':int(config.get('height',352))}
     if refs:inputs['reference_asset_ids']=refs
     if kind=='image':inputs['image_steps']=int(config.get('image_steps',12))
-    else:inputs.update(frames=int(round(float(body.get('duration',3))*fps/4)*4+1),fps=fps,source_asset_id=source_id if source_id is not None else scene['selected_image_id'])
+    else:
+        inputs.update(frames=int(round(float(body.get('duration',3))*fps/4)*4+1),fps=fps,source_asset_id=source_id if source_id is not None else scene['selected_image_id'])
+        if body.get('ending_asset_id'):inputs['ending_asset_id']=body['ending_asset_id']
     return hashlib.sha256(encode(inputs).encode()).hexdigest()
 
 
@@ -61,7 +63,9 @@ def snapshot_signature(snapshot,kind):
     inputs={k:snapshot.get(k,config.get(k,default)) for k,default in [('positive_prompt',''),('negative_prompt',''),('workflow_id',''),('base_seed',snapshot.get('seed',26102026)-snapshot.get('candidate_index',0)),('width',640),('height',352)]}
     if snapshot.get('reference_asset_ids'):inputs['reference_asset_ids']=snapshot['reference_asset_ids']
     if kind=='image':inputs['image_steps']=int(snapshot.get('image_steps',config.get('image_steps',12)))
-    else:inputs.update(frames=snapshot['frames'],fps=snapshot['fps'],source_asset_id=snapshot['source_asset_id'])
+    else:
+        inputs.update(frames=snapshot['frames'],fps=snapshot['fps'],source_asset_id=snapshot['source_asset_id'])
+        if snapshot.get('ending_asset_id'):inputs['ending_asset_id']=snapshot['ending_asset_id']
     return hashlib.sha256(encode(inputs).encode()).hexdigest()
 
 
@@ -98,6 +102,11 @@ def snapshot_for(scene, project, kind, source=None, config=None):
         if not entry['capabilities'].get('reference_images'):raise ValueError('Choose the Qwen References workflow to use visual references.')
         data['reference_asset_ids']=reference_ids;data['reference_assets']=owned_references(db,project['id'],reference_ids)
     data['scene_brief']=body.get('summary','')
+    if kind=='video' and (body.get('ending_asset_id') or workflow_id=='wan22-first-last'):
+        if not entry['capabilities'].get('first_last_frame'):raise ValueError('This workflow cannot use an ending frame. Choose Wan First & last frame.')
+        if not body.get('ending_asset_id'):raise ValueError('Choose an ending frame for this workflow.')
+        ending=owned_references(db,project['id'],[body['ending_asset_id']])[0]
+        data.update(ending_asset_id=ending['id'],ending_sha256=ending['sha256'])
     registry.build(workflow_id,data,'sceneflow/preflight','source.png' if kind=='video' else None)
     return data
 
@@ -265,7 +274,7 @@ def update_job(identifier,status,**values):
         raise ValueError('Invalid operational job update')
     columns = ['status=?']+[key+'=?' for key in values]
     db.execute('UPDATE jobs SET '+','.join(columns)+' WHERE id=?',(status,*values.values(),identifier))
-    job = db.one('SELECT project_id,scene_id FROM jobs WHERE id=?',(identifier,))
+    job = db.one('SELECT project_id,scene_id,kind FROM jobs WHERE id=?',(identifier,))
     db.event('job.updated',{'job_id':identifier,'status':status,**(job or {})})
 
 
@@ -408,6 +417,8 @@ class Dispatcher:
                     return (uploaded.get('subfolder','')+'/' if uploaded.get('subfolder') else '')+uploaded['name']
                 references=[await upload_owned(r['id'],r['sha256']) for r in snap.get('reference_assets',[])]
                 mask=await upload_owned(snap['mask_asset_id'],snap['mask_sha256']) if snap.get('mask_asset_id') else None
+                ending=None
+                if snap.get('ending_asset_id'):ending=await upload_owned(snap['ending_asset_id'],snap['ending_sha256'])
                 if job['kind']=='video':
                     source = db.one('SELECT * FROM assets WHERE id=?',(snap['source_asset_id'],))
                     path = asset_path(snap['source_asset_id'])
@@ -421,7 +432,8 @@ class Dispatcher:
                     uploaded=response.json()
                     image=(uploaded.get('subfolder','')+'/' if uploaded.get('subfolder') else '')+uploaded['name']
                 if snap['workflow_id']=='qwen-image-21-reference' and not references:raise ValueError('Choose at least one reference image before generating with the reference workflow.')
-                graph,entry=registry.build(snap['workflow_id'],snap,prefix,image,references,mask)
+                if snap['workflow_id']=='wan22-first-last' and not ending:raise ValueError('The frozen animation request is missing its exact ending frame.')
+                graph,entry=registry.build(snap['workflow_id'],snap,prefix,image,references,mask,ending)
                 import platform
                 from .config import VERSION
                 versions={'studio':VERSION,'python':platform.python_version()}

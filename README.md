@@ -2,7 +2,7 @@
 
 A local filmmaking studio for planning scenes, generating starting stills, animating their exact images, reviewing takes and assembling a movie. The public React interface connects to an authenticated Windows agent on your computer.
 
-**Release 0.7 — editing and production control.** Adds shared timeline playback, audio waveforms, direct trim handles, exact rendered previews, bounded production controls, observed timing estimates and reviewed Director operations to the reference-guided local studio.
+**Release 0.8 — keyframes and studio care.** Adds native Wan first/last-frame control, a reversible scratch quarantine and an optional Windows tray controller to the reference-guided studio, shared timeline playback, rendered previews and reviewed Director operations.
 
 - [Published interface](https://rorrimaesu.github.io/sceneflow-ai-studio/)
 - [Verification ledger](docs/EVIDENCE.md)
@@ -76,7 +76,15 @@ The visual bible selects up to three project-owned reference images and locked a
 
 The correction canvas supports zoom, brush masks, erasing, brush undo, strength and step controls, and before/after comparison. Masked correction uses source-encoded Qwen latents with a noise mask, then composites against the original and rejects any change outside zero-mask pixels. Corrections remain unselected takes until approved. Supported target dimensions are multiples of 32 up to 2048 pixels; hardware capacity remains preset dependent.
 
-LTX synchronized generation, first/last-frame controls, outpainting, neural upscaling and specialized video-editing models are not yet configured or verified here. Large models and custom nodes are never downloaded automatically.
+Scene **Settings → Starting & ending frames** accepts an optional owned project image. The native Wan first/last adapter reuses the installed weights, freezes both image IDs/hashes, and invalidates only animation inputs when the ending changes. The starting still can also be the ending target for loop guidance. Conditioning cannot guarantee exact ending pixels or a seamless loop.
+
+LTX synchronized generation was deferred at the user's request. Outpainting, neural upscaling and specialized video-editing models remain unconfigured. Large models and custom nodes are never downloaded automatically. Masked correction currently requires an opaque still so preservation includes the full visible source.
+
+## Optional tray and studio care
+
+Run `START_TRAY.bat` for a Windows notification-area menu. It opens the studio, stops only the owned agent, or exits the tray. It adds no automatic startup entry and changes no execution policy. Enable tray completion alerts in **Settings → Studio care**; browser notifications are separate. Windows settings can suppress alerts. The controller's assemblies and paths were checked; visual tray and operating-system alert delivery remain unverified.
+
+Storage review considers only export scratch folders from terminal export jobs older than 24 hours. A session-bound 15-minute review freezes the file listing; changed files, active jobs, links and escaping paths are rejected. Quarantine moves the reviewed folders into `backups/cleanup/` with a recoverable journal. Restore refuses to overwrite new files. Quarantine does **not** release physical drive space; no purge or automatic deletion is provided. Project media, model files, installed tools and arbitrary temporary folders are excluded.
 
 ## Backup and restore
 

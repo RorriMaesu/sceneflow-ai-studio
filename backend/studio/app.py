@@ -210,6 +210,7 @@ async def add_scene(identifier: str, body: SceneInput, session=Depends(require_s
     scene_body(body.body)
     from .continuity import owned_references
     owned_references(db,identifier,body.body.get('reference_asset_ids',[]))
+    if body.body.get('ending_asset_id'):owned_references(db,identifier,[body.body['ending_asset_id']])
     validate_workflows(body.body)
     return db.add_scene(identifier, body.title, body.body)
 
@@ -219,6 +220,7 @@ async def edit_scene(identifier: str, body: SceneEdit, session=Depends(require_s
     scene_body(body.body)
     from .continuity import owned_references
     owned_references(db,db.scene(identifier)['project_id'],(body.body or {}).get('reference_asset_ids',[]))
+    if (body.body or {}).get('ending_asset_id'):owned_references(db,db.scene(identifier)['project_id'],[body.body['ending_asset_id']])
     validate_workflows(body.body or {})
     result=db.update_scene(identifier, body.revision, body.title, body.body)
     from .production import supersede_pending
@@ -252,8 +254,9 @@ async def assets(project_id: str | None = None, session=Depends(require_session)
 async def update_settings(values: dict, session=Depends(require_session)):
     if any(key not in settings for key in values):
         raise HTTPException(422, 'Unknown setting.')
-    if set(values)-{'comfy_url','ollama_url','vram_reserve_mb','disk_reserve_gb','memory_profile'}:
+    if set(values)-{'comfy_url','ollama_url','vram_reserve_mb','disk_reserve_gb','memory_profile','desktop_notifications'}:
         raise HTTPException(422,'Executable and storage paths are controlled by the local installation configuration.')
+    if 'desktop_notifications' in values and type(values['desktop_notifications']) is not bool:raise ValueError('Desktop notifications must be on or off.')
     for key,low,high in [('vram_reserve_mb',512,8192),('disk_reserve_gb',1,500)]:
         if key in values and (not isinstance(values[key],(int,float)) or not low<=values[key]<=high):raise ValueError('Resource reserves are outside supported bounds.')
     if 'memory_profile' in values and values['memory_profile'] not in ['conservative','balanced','performance']:raise ValueError('Unknown resource profile.')
@@ -309,6 +312,8 @@ from .continuity import router as continuity_router
 app.include_router(continuity_router)
 from .insights import router as insights_router
 app.include_router(insights_router)
+from .maintenance import router as maintenance_router
+app.include_router(maintenance_router)
 
 
 @app.get('/{path:path}')

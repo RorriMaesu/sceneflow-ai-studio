@@ -98,6 +98,7 @@ def restore_bundle(path):
             def check_references(values):
                 identifiers=values.get('reference_asset_ids',[])
                 if not isinstance(identifiers,list) or len(identifiers)>3 or any(not isinstance(v,str) or v not in asset_rows or asset_rows[v]['kind']!='image' for v in identifiers):raise ValueError('A bundled visual reference is missing or belongs outside this project.')
+                if values.get('ending_asset_id') and (values['ending_asset_id'] not in asset_rows or asset_rows[values['ending_asset_id']]['kind']!='image'):raise ValueError('A bundled ending frame is missing or not an image.')
             check_references(json.loads(original['settings']))
             for row in tables['scenes']:check_references(json.loads(row['body']))
             for row in tables['scene_revisions']:check_references(json.loads(row['body']))
@@ -106,6 +107,7 @@ def restore_bundle(path):
                 for ref in frozen.get('reference_assets',[]):
                     if ref.get('id') not in asset_rows or ref.get('sha256')!=asset_rows[ref['id']]['sha256']:raise ValueError('A bundled reference hash does not match its media.')
                 if frozen.get('mask_asset_id') and (frozen['mask_asset_id'] not in asset_rows or frozen.get('mask_sha256')!=asset_rows[frozen['mask_asset_id']]['sha256']):raise ValueError('A bundled correction mask is missing or changed.')
+                if frozen.get('ending_asset_id') and frozen.get('ending_sha256')!=asset_rows[frozen['ending_asset_id']]['sha256']:raise ValueError('A bundled ending-frame hash does not match its image.')
             for table in ['scenes','jobs','assets','chat']:
                 if any(r['project_id']!=original['id'] for r in tables[table]):raise ValueError('Cross-project rows in bundle.')
             for row in tables['assets']:

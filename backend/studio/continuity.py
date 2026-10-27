@@ -26,6 +26,7 @@ def visual_inputs(scene,project,kind):
     if rules:prompt+='\nLocked appearance and style rules: '+rules
     workflow=body.get(kind+'_workflow') or config.get(kind+'_workflow')
     if references and workflow=='qwen-image-21':workflow='qwen-image-21-reference'
+    if kind=='video' and body.get('ending_asset_id') and workflow=='wan22-i2v':workflow='wan22-first-last'
     return prompt,workflow,references
 
 
@@ -85,6 +86,8 @@ async def correct(identifier:str,body:Correction,session=Depends(require_session
     source=db.one("SELECT * FROM assets WHERE id=? AND kind='image' AND scene_id IS NOT NULL",(identifier,))
     if not source:raise ValueError('Choose a scene still to correct.')
     scene=db.scene(source['scene_id']);project=db.project(source['project_id']);meta=json.loads(source['metadata'])
+    with Image.open(asset_path(identifier)) as image:
+        if image.convert('RGBA').getchannel('A').getextrema()!=(255,255):raise ValueError('Correction currently requires an opaque still. Flatten transparency before importing it.')
     if meta['width']%32 or meta['height']%32 or max(meta['width'],meta['height'])>2048:raise ValueError('Correction currently supports still dimensions divisible by 32, up to 2048 pixels. Generate a compatible still first.')
     refs=owned_references(db,project['id'],[identifier])
     for ref in project['settings'].get('reference_asset_ids',[]):

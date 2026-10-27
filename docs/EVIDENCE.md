@@ -50,7 +50,7 @@
 ## Explicit verification boundaries
 
 - The actual HTTPS Pages interface paired with the local agent and played local media in the available in-app Chromium browser. Standalone Edge/Chrome local-network permission grant, deny and revoke cases were unavailable to the test tools and remain unverified.
-- LTX synchronized sound generation, specialized masking/outpainting/neural upscaling and first/last-frame conditioning require separately configured and verified adapters. They are presented as unavailable capabilities rather than successful generation.
+- LTX synchronized sound generation, outpainting, neural upscaling and specialized video editing remain unconfigured. Masked correction and first/last-frame conditioning were subsequently implemented and tested in Phases 6 and 8 below.
 - A small 20-scene scheduler simulation validates 40 dependent stages; it is not a benchmark of 40 real generations. Visual scores are advisory, and sampled frames cannot certify all motion or sound.
 
 ## Phase 6 — Creative continuity
@@ -61,6 +61,7 @@
 - The refined 25-step, strength 0.6 correction completed. Human inspection found that the lantern structure was retained and the flame became blue; the surrounding amber light remained. Full-resolution comparison verified every zero-mask pixel unchanged. Both attempts and the original remain available; neither correction was automatically selected.
 - The final local creative/quality/editing subset passed 22 checks. Image grids now use authenticated 320-pixel thumbnails while candidate inspection and correction use original-resolution assets.
 - Phase 6 commit `6c78d8c` passed all 61 tests and Pages deployment in run `40439973940`. The completed four-shot proof is 1920×1080 H.264, 30 fps, 248 decoded frames, 8.266667 seconds, silent. All exact still/video/reference hashes and timeline order were checked. One real reference-aware still review completed with its actual reference and an advisory acceptance score of 1.0.
+- Added tests for cross-project reference rejection, immutable reference IDs/hashes, rule invalidation, flattened graph inputs and source latents, changed-pixel rejection outside a mask, project-scoped export pagination beyond the global 100-asset bootstrap, zero retry limits, and reference remapping in restored bundles. Seven-time QA sampling includes frozen references and preserves the advisory/contradictory-result guard.
 
 ## Phase 7 — Editing and production control
 
@@ -69,5 +70,13 @@
 - A real Director request initially proposed regeneration while asked only to change settings. It was left unapplied and dismissed. Added creative-only schemas by default, explicit operation-proposal opt-in and action/field consistency validation. A fresh real request then proposed only duration 1.5 and seed 773 for the selected scene; application verified the other scene body unchanged and retained the paused state.
 - Added persisted reviewed commands with revision checks, elapsed budgets, per-stage video attempts, stop/continue/partial failure policies, no automatic failed-export retry loop, source-matched timing ranges, explicit-work pause isolation and stricter QA-advice consistency. Local checks passed 44 Director/production/editing tests, 22 foundation/quality tests and four final control checks before the last action-validation additions. CI runs the complete final suite before publication.
 - LTX downloads were explicitly declined by the user. No LTX weights, external updater, ComfyUI package update or driver change was performed.
-- Added tests for cross-project reference rejection, immutable reference IDs/hashes, rule invalidation, flattened graph inputs and source latents, changed-pixel rejection outside a mask, project-scoped export pagination beyond the global 100-asset bootstrap, zero retry limits, and reference remapping in restored bundles.
-- Regression checks passed 42 foundation, production and quality tests before the final correction refinements. The complete deployment suite runs all final checks. New QA samples seven video times, includes frozen references and preserves the advisory/contradictory-result guard.
+- Phase 7 commit `2743511f` passed all 74 tests and Pages deployment in run `40445776581`.
+
+## Phase 8 — Keyframes and studio care
+
+- Native `WanFirstLastFrameToVideo` discovery succeeded with the same installed Wan weights. One real 640×352, 16 fps, 33-frame, 2.0625-second clip completed with the exact same owned PNG/hash as both starting and ending conditioning. The submitted graph, both image hashes, source lineage, full decode and final paused state were verified. Five sampled frames retained recognizable appearance and returned close to the starting pose; exact endpoint equality and seamlessness are not claimed.
+- Its final saved-timeline export passed hash and full decode checks: 1920×1080 H.264, 30 fps, 62 frames, 2.066667 seconds, silent. This is conventional scaling from the native 640×352 clip, not neural enhancement.
+- A real local Director proposal contained only one `regenerate_video` command for the selected proof scene. It was validated, explicitly applied, persisted and completed while the Manual project stayed paused. No unrelated creative changes or global resume were required.
+- Local checks passed 25 continuity/editing/maintenance tests and all remaining 56 security, scheduling, Director and QA tests. The frontend production build passed. Browser checks verified trim/Undo returning to a clean saved timeline, shared playback to the second clip, saved first/last images, and an empty scratch review with quarantine disabled.
+- Scratch quarantine/restore was exercised on disposable test fixtures, including active/recent exclusion, changed-plan rejection, foreign-session rejection, interrupted moves, overwrite refusal, traversal and symlink rejection. No real production scratch folders were moved or deleted. Quarantine intentionally preserves occupied drive space.
+- The optional PowerShell tray controller passed assembly and installation-path checks without changing execution policy or opening a tray window. Its native menu and Windows alert delivery remain unverified. Generic notice tests verify opt-in behavior and exclusion of prompts/error text.

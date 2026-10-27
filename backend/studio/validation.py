@@ -24,6 +24,7 @@ def project_settings(values):
 
 def scene_body(body):
     if body is None:return
+    if 'ending_asset_id' in body and body['ending_asset_id'] is not None and (not isinstance(body['ending_asset_id'],str) or len(body['ending_asset_id'])>100):raise ValueError('Choose an ending image from this project.')
     limits={'image_prompt':6000,'video_prompt':6000,'negative_prompt':2000,'summary':4000,'notes':12000,'start_state':2000,'end_state':2000}
     for key,limit in limits.items():
         if key in body and (not isinstance(body[key],str) or len(body[key])>limit):raise ValueError(f'{key} exceeds its supported text length.')

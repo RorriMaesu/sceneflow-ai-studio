@@ -13,6 +13,9 @@ Hybrid Assisted Autopilot is the default. Autopilot and Manual are policies over
 3. **Direction and automation:** real Ollama discovery and structured planning, safe proposed edits, resource coordination, three-mode switching, review gates, Auto Produce, and live intervention. Prove a 20-scene simulated production and real multi-scene generation. Publish.
 4. **Editing and assembly:** candidate/take review, timeline reorder/trim/split/speed, sound tracks, transitions, loop options, export snapshots, provenance, backup/restore and project bundles. Verify using synthetic labeled clips and real generated footage. Publish.
 5. **QA and release verification:** optional installed vision models, frame sampling, technical checks, bounded retries, mapping editor, capability explanations, accessibility/browser checks, onboarding, diagnostics and a complete evidence ledger. Publish the release.
+6. **Creative continuity:** owned visual references and locked style rules, reference-conditioned stills, source-latent masked correction, before/after review and exact pixel-preservation checks. Prove a four-shot film and publish.
+7. **Editing and production control:** continuous shared playhead, waveform/trim controls, exact rendered previews, bounded run budgets and attempts, measured timing ranges and persisted reviewed Director commands. Prove paused-project editing and sound; publish.
+8. **Keyframes and studio care:** native first/last conditioning with existing weights, end-image backup/hash checks, reversible scratch quarantine, optional tray controls and opt-in notices. Prove another actual video and publish. LTX model installation is deferred by user choice.
 
 Each phase has a source commit, a visible release label and a successful GitHub Pages deployment. A phase is not complete merely because a deployment workflow started.
 

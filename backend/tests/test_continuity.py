@@ -84,3 +84,28 @@ def test_zero_quality_retry_budget_means_zero(visual):
     store,m,p,s,a,path=visual
     job=m['production'].queue_snapshot('image',{'project_id':p['id'],'scene_id':s['id'],'scene_revision_id':s['revision_id']})
     assert not m['quality'].retry_allowed(store,job,{'qa_policy':{'qa_regenerate':True,'max_retries':0}},.2)
+
+
+def test_ending_frame_is_frozen_and_changes_only_video_inputs(visual):
+    store,m,p,s,a,path=visual
+    m['media'].select_asset(a['id'],True);s=store.scene(s['id'])
+    image_before=m['production'].stage_signature(s,p,'image');video_before=m['production'].snapshot_for(s,p,'video',a)
+    changed=store.update_scene(s['id'],s['revision'],body={'ending_asset_id':a['id']})
+    assert m['production'].stage_signature(changed,p,'image')==image_before
+    assert not m['production'].snapshot_is_current(video_before,changed,p,'video')
+    snapshot=m['production'].snapshot_for(changed,p,'video',a)
+    assert snapshot['workflow_id']=='wan22-first-last' and snapshot['ending_asset_id']==a['id'] and snapshot['ending_sha256']==a['sha256']
+    graph,_=m['adapters'].registry.build(snapshot['workflow_id'],snapshot,'test','start.png',ending='end.png')
+    assert graph['condition']['class_type']=='WanFirstLastFrameToVideo' and graph['ending']['inputs']['image']=='end.png'
+    other=store.create_project('Other project');foreign=m['media'].add_asset(other['id'],None,None,'image',path/'source.png')
+    changed=store.update_scene(s['id'],changed['revision'],body={'ending_asset_id':foreign['id']})
+    with pytest.raises(ValueError,match='owned by this project'):m['production'].snapshot_for(changed,p,'video',a)
+
+
+def test_correction_rejects_transparency_before_queueing(visual):
+    store,m,p,s,a,path=visual
+    transparent=path/'transparent.png';Image.new('RGBA',(64,64),(0,0,255,100)).save(transparent)
+    asset=m['media'].add_asset(p['id'],s['id'],None,'image',transparent)
+    with pytest.raises(ValueError,match='opaque'):
+        asyncio.run(m['continuity'].correct(asset['id'],m['continuity'].Correction(prompt='Make the body red')))
+    assert not store.jobs()

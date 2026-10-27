@@ -4,8 +4,8 @@ import secrets
 import time
 from pathlib import Path
 
-VERSION = '0.7.0'
-PHASE = 'Phase 7 · Editing & production control'
+VERSION = '0.8.0'
+PHASE = 'Phase 8 · Keyframes & studio care'
 ROOT = Path(os.environ.get('STUDIO_ROOT', Path(__file__).resolve().parents[2])).resolve()
 PORT = int(os.environ.get('STUDIO_PORT', '8770'))
 for name in ['config', 'database', 'cache', 'temp', 'logs', 'projects', 'backups', 'workflows']:
@@ -15,6 +15,7 @@ DEFAULTS = {
     'comfy_root': 'M:/ComfyUI/ComfyUI', 'ffmpeg': '', 'ffprobe': '',
     'vram_reserve_mb': 1800, 'memory_profile': 'conservative', 'disk_reserve_gb': 5,
     'pages_url': 'https://rorrimaesu.github.io/sceneflow-ai-studio/',
+    'desktop_notifications': False,
 }
 SETTINGS_FILE = ROOT / 'config' / 'settings.json'
 settings = {**DEFAULTS, **(json.loads(SETTINGS_FILE.read_text()) if SETTINGS_FILE.exists() else {})}

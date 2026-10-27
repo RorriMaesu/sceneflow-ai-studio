@@ -87,6 +87,8 @@ class Store:
 
     def event(self, kind, data):
         self.execute('INSERT INTO events(kind,data,created) VALUES(?,?,?)', (kind, encode(data), now()))
+        from .desktop import notice
+        notice(kind, data)
 
     def projects(self):
         rows = self.all('SELECT * FROM projects WHERE archived=0 ORDER BY updated DESC')
