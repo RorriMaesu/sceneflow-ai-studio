@@ -33,6 +33,18 @@ Story and Edit expose characters, preset voices, script lines, language, recordi
 
 Actual local Qwen3-TTS speech completed through the shared GPU queue and passed full audio decoding. Eight focused checks passed for script history, cross-production ownership, unsafe source archives, setup-only archived jobs, readiness gates, unsupported delivery instructions, session-bound approval and cancellation. The interface production build passed. Music and effects adapters are included for qualification in Phase 16; they remain gated by their own samples.
 
+Phase 15 was published as `5e11299bb08fe43547cf0c0c68916ae78c52109c`; [verification and Pages deployment passed](https://github.com/RorriMaesu/sceneflow-ai-studio/actions/runs/40569947292).
+
+## Phase 16 — Music, songs, effects and a recorded conversation
+
+Actual local tests completed for Qwen3-TTS speech, an ACE-Step instrumental, a short vocal song and a MOSS rain effect. The small effects profile uses only the requested latent duration, CPU offloading and floating-point weight conversion that preserves complex positional buffers. An earlier default configuration reached the allocator ceiling; it was stopped, corrected and retested. Existing ComfyUI packages were preserved throughout.
+
+Device-wide sampled GPU peaks were approximately 3.4 GiB for speech, 6.1 GiB for music and 4.5 GiB for the corrected effects test. These observations include other apps and are not guaranteed maxima. Music also used substantial system memory; future admission includes measured growth plus allowance. A per-worker allocator ceiling and one shared GPU queue provide additional limits.
+
+The private proof contains two recurring preset voices across three lines, real recorded timing with short pauses, generated background music and generated rain, assembled over previously generated visual footage. It demonstrates the new sound path rather than claiming newly generated lip-sync or a full new film. Each tool stays bounded by its passed duration; singing is a separate setup check. Users can listen before placing any take.
+
+Sound forms and script edits protect browser drafts. Backups now include casts, lines and revision history, restore under new IDs and keep work paused; bundles with script data use version 2 so older agents reject them safely. Duplicate clicks reuse queued sound requests. Thirteen focused sound/history/backup checks and the production interface build passed locally. CI runs the full regression suite before Pages deployment.
+
 ## Remaining phases
 
-16: music/effects qualification. 17: shows/films and shared continuity. 18: music-video timing, lip-sync and captions. 19: long-form sequences and resumable assembly. 20: conditional LTX and staged updates. These are not claimed as delivered by Phase 15.
+17: shows/films and shared continuity. 18: music-video timing, lip-sync and captions. 19: long-form sequences and resumable assembly. 20: conditional LTX and staged updates. These are not claimed as delivered by Phase 16.

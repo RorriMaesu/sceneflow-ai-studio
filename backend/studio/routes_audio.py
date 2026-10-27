@@ -16,7 +16,7 @@ class Line(Strict):
     text:str=Field(min_length=1,max_length=600)
     scene_id:str|None=None
     cast_id:str|None=None
-    start:float=Field(default=0,ge=0,le=36000,allow_inf_nan=False)
+    start:float|None=Field(default=None,ge=0,le=36000,allow_inf_nan=False)
 class EditLine(Line):
     revision:int
 class Place(Strict):
@@ -34,7 +34,7 @@ class Cue(Strict):
 @router.get('/projects/{project_id}/sound')
 async def view(project_id:str,session=Depends(require_session)):
     return {**script_audio.view(project_id),'voices':audio_engine.VOICES,'languages':audio_engine.LANGUAGES,
-            'tools':{key:{'ready':audio_engine.pack_ready(key),'tested_seconds':(audio_engine.qualification(key) or {}).get('body',{}).get('tested_seconds')} for key in ['voices-small','music','effects']}}
+            'tools':{key:{'ready':audio_engine.pack_ready(key),'tested_seconds':(audio_engine.qualification(key) or {}).get('body',{}).get('tested_seconds'),'vocal':'vocal' in (audio_engine.qualification(key) or {}).get('body',{}).get('capabilities',[])} for key in ['voices-small','music','effects']}}
 @router.post('/projects/{project_id}/cast')
 async def cast(project_id:str,body:Cast,session=Depends(require_session)):
     return script_audio.add_cast(project_id,**body.model_dump())
@@ -54,3 +54,11 @@ async def place(project_id:str,body:Place,session=Depends(require_session)):
 async def cue(project_id:str,body:Cue,session=Depends(require_session)):
     db.project(project_id)
     return await asyncio.to_thread(audio_engine.queue_sound,project_id,body.kind,body.model_dump(exclude={'kind','scene_id'}),body.scene_id)
+
+@router.post('/projects/{project_id}/sound/speak-missing')
+async def missing_speech(project_id:str,session=Depends(require_session)):
+    return await asyncio.to_thread(script_audio.queue_missing,project_id)
+
+@router.post('/projects/{project_id}/sound/place-script')
+async def place_script(project_id:str,session=Depends(require_session)):
+    return script_audio.place_script(project_id)

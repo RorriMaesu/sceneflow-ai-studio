@@ -20,18 +20,24 @@ const kinds: Record<string, string> = {
   director: "Director request",
   qa: "AI quality check",
   export: "Save video",
+  speech: "Speech creation",
+  music: "Music creation",
+  effects: "Sound effect creation",
+  outline: "Season or chapter planning",
 };
 export function ActivityPage({
   projects,
   jobs,
   act,
   choose,
+  goSetup,
 }: {
   projects: Project[];
   jobs: Job[];
   act: any;
   active?: string;
   choose: (id: string) => void;
+  goSetup?: () => void;
 }) {
   const [scope, setScope] = useState("all"),
     [showDone, setShowDone] = useState(false),
@@ -83,12 +89,12 @@ export function ActivityPage({
               {j.snapshot.scene_title ||
                 j.snapshot.title ||
                 projects.find((p) => p.id === j.project_id)?.title ||
-                "Saved video"}
+                (j.snapshot.setup_probe ? "Creation tool sample" : "Saved video")}
             </h3>
             <p>
-              Video:{" "}
+              {j.snapshot.setup_probe ? "Setup check: " : "Video: "}
               {projects.find((p) => p.id === j.project_id)?.title ||
-                "Archived video"}
+                (j.snapshot.setup_probe ? "Voices, music or effects" : "Archived video")}
             </p>
           </div>
           {!["completed", "superseded", "cancelled"].includes(j.status) && (
@@ -101,19 +107,19 @@ export function ActivityPage({
                     ? "Open the video and review the scene or planning proposal."
                     : j.status === "queued"
                       ? "Waiting for its turn, your review, or available resources."
-                      : `${Math.round(j.progress * 100)}% of the current stage`}
+                      : ["speech","music","effects"].includes(j.kind) && !j.progress ? "Loading and creating sound. This can take several minutes; other graphics tasks wait their turn." : `${Math.round(j.progress * 100)}% of the current stage`}
             </p>
           )}
           <div className="button-row">
-            <button className="button" onClick={() => choose(j.project_id)}>
-              Open video
+            <button className="button" onClick={() => j.snapshot.setup_probe && goSetup ? goSetup() : choose(j.project_id)}>
+              {j.snapshot.setup_probe ? "Open tool setup" : "Open video"}
             </button>
             {["failed", "cancelled"].includes(j.status) && (
               <button
                 className="button"
                 onClick={() =>
                   act(
-                    () => request(`/api/jobs/${j.id}/retry`, {}),
+                    () => j.snapshot.setup_probe ? request(`/api/setup/packs/${j.snapshot.pack_id}/sample`,{seconds:j.snapshot.inputs?.seconds,vocal:j.snapshot.inputs?.instrumental===false}) : request(`/api/jobs/${j.id}/retry`, {}),
                     "A new attempt was requested.",
                   )
                 }
@@ -135,7 +141,7 @@ export function ActivityPage({
               </button>
             )}
             {["submitted", "reconciling"].includes(j.status) &&
-              ["image", "video"].includes(j.kind) && (
+              ["image", "video", "speech", "music", "effects"].includes(j.kind) && (
                 <button
                   className="button"
                   onClick={() =>

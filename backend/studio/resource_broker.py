@@ -199,6 +199,8 @@ class ResourceBroker:
             self.measurement = {'job_id': job['id'], 'kind': job['kind'], 'started': now(), 'profile': profile,
                                 'gpu_used_peak': 0, 'ram_used_peak': 0, 'commit_used_peak': 0, 'samples': 0,
                                 'note': 'Device-wide sampled peaks include other apps. They are observations, not guaranteed model maxima.'}
+            initial=resources()
+            self.measurement.update(gpu_used_start=(initial.get('gpu') or {}).get('used',0),ram_used_start=initial.get('ram_used',0))
             self.sample()
             self.monitor = asyncio.create_task(self.watch())
             return None

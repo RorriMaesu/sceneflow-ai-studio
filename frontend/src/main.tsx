@@ -1055,6 +1055,7 @@ function Studio() {
                   act={act}
                   active={active}
                   choose={choose}
+                  goSetup={()=>go('Setup')}
                 />
               ) : page === "Setup" ? (
                 data ? <StudioSetup act={act} done={() => go("Overview")} /> : <Empty title="Connect your studio first" description="Start SceneFlow on this PC, then connect this browser." action={<Button primary onClick={() => setPairOpen(true)}>Connect</Button>} />

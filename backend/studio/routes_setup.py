@@ -138,9 +138,10 @@ async def install_runtime(body:Install,session=Depends(require_session)):
 
 class Probe(Strict):
     seconds:float|None=Field(default=None,ge=1,le=60,allow_inf_nan=False)
+    vocal:bool=False
 
 
 @router.post('/packs/{identifier}/sample')
 async def sample(identifier:str,body:Probe,session=Depends(require_session)):
     from .audio_engine import queue_probe
-    return await asyncio.to_thread(queue_probe,identifier,body.seconds)
+    return await asyncio.to_thread(queue_probe,identifier,body.seconds,body.vocal)

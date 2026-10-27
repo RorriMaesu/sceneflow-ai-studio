@@ -78,3 +78,67 @@ def test_cancellation_requests_only_the_owned_sound_job(connected):
     db.execute("UPDATE jobs SET status='running' WHERE id=?",(job['id'],))
     response=client.post('/api/jobs/'+job['id']+'/cancel',json={},headers=headers)
     assert response.status_code==200 and db.one('SELECT cancel_requested FROM jobs')['cancel_requested']==1
+
+
+def test_conversation_timing_uses_recorded_duration_and_preserves_manual_start(connected):
+    _,_,db=connected
+    p=db.create_project('Conversation')
+    first=sound.save_line(p['id'],{'text':'Hello'})
+    second=sound.save_line(p['id'],{'text':'Welcome'})
+    third=sound.save_line(p['id'],{'text':'Later','start':12})
+    for line,duration in [(first,2.4),(second,3.1)]:
+        asset='audio-'+line['id']
+        db.execute('INSERT INTO assets(id,project_id,kind,metadata,created) VALUES(?,?,?,?,?)',(asset,p['id'],'audio',encode({'duration':duration}),now()))
+        sound.apply_take({'id':'job-'+line['id'],'project_id':p['id']},{'inputs':{'line_id':line['id'],'line_revision':1}},{'id':asset})
+    rows=sound.view(p['id'])['lines']
+    assert rows[0]['start']==0 and rows[1]['start']==pytest.approx(2.65)
+    assert rows[2]['start']==12
+
+
+def test_duplicate_sound_click_reuses_the_same_queued_request(connected):
+    _,_,db=connected
+    p=db.create_project('A')
+    frozen={'project_id':p['id'],'pack_id':'voices-small','inputs':{'text':'Hello'},'manual_requested_at':1}
+    first=production.queue_snapshot('speech',frozen)
+    second=production.queue_snapshot('speech',{**frozen,'manual_requested_at':2})
+    assert first['id']==second['id']
+
+
+def test_longer_cues_require_a_longer_sample(connected,monkeypatch):
+    _,_,db=connected
+    monkeypatch.setattr(audio_engine,'installed_pack',lambda _:({'revision':'p'},{},None))
+    monkeypatch.setattr(audio_engine,'runtime_record',lambda _:{'manifest':'{}'})
+    monkeypatch.setattr(audio_engine,'qualification',lambda _:{'body':{'tested_seconds':3}})
+    with pytest.raises(ValueError,match='up to 3 seconds'):
+        audio_engine.queue_sound(db.create_project('Effects')['id'],'effects',{'prompt':'Rain','seconds':5})
+
+
+def test_adapter_changes_require_a_new_sample(connected,monkeypatch):
+    _,_,db=connected
+    audio_engine.migrate()
+    monkeypatch.setattr(audio_engine,'runtime_record',lambda _:{'manifest':'{"hash":"runtime"}'})
+    monkeypatch.setattr(audio_engine,'fingerprint',lambda:'hardware')
+    monkeypatch.setattr(audio_engine,'adapter_hash',lambda _:'new-adapter')
+    from studio.model_library import pack
+    db.execute('INSERT INTO audio_qualifications VALUES(?,?,?,?,?,?)',('voices-small',pack('voices-small')['revision'],'runtime','hardware',encode({'adapter_hash':'old-adapter'}),now()))
+    assert audio_engine.qualification('voices-small') is None
+
+
+def test_backup_restores_cast_script_and_history_under_new_ids(connected,tmp_path,monkeypatch):
+    _,_,db=connected
+    from studio import bundles,storage
+    monkeypatch.setattr(bundles,'ROOT',tmp_path)
+    monkeypatch.setattr(storage,'ROOT',tmp_path)
+    for name in ['backups','projects','temp']:(tmp_path/name).mkdir()
+    p=db.create_project('Script backup')
+    cast=sound.add_cast(p['id'],'Mara','Vivian')
+    line=sound.save_line(p['id'],{'text':'First version','cast_id':cast['id']})
+    sound.save_line(p['id'],{'text':'Second version','cast_id':cast['id']},line['id'],1)
+    result=bundles.create_bundle(p['id'])
+    restored=bundles.restore_bundle(storage.role_folder('backups')/result['filename'])
+    current=sound.view(restored['id'])
+    assert current['cast'][0]['name']=='Mara' and current['cast'][0]['id']!=cast['id']
+    assert current['lines'][0]['text']=='Second version'
+    assert current['lines'][0]['cast_id']==current['cast'][0]['id']
+    history=db.one('SELECT body FROM script_line_revisions WHERE id=?',(current['lines'][0]['id'],))
+    assert json.loads(history['body'])['text']=='First version'

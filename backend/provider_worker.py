@@ -72,8 +72,16 @@ def effects(body, output):
     import torch
     from moss_soundeffect_v2 import MossSoundEffectPipeline
     graphics_budget(torch)
-    model=MossSoundEffectPipeline.from_pretrained(body['pack_path'],torch_dtype=torch.bfloat16,device='cuda',local_files_only=True)
-    audio=model(prompt=body['prompt'],seconds=float(body['seconds']),num_inference_steps=100,cfg_scale=4.0,seed=int(body.get('seed',0)))
+    model=MossSoundEffectPipeline.from_pretrained(body['pack_path'],torch_dtype=torch.bfloat16,device='cpu',local_files_only=True)
+    # Module.to(dtype) would destroy complex positional buffers. Cast floating weights only.
+    for module in model.engine.modules():
+        for parameter in module.parameters(recurse=False):
+            if parameter.is_floating_point():parameter.data=parameter.data.to(dtype=torch.bfloat16)
+        for name,buffer in module.named_buffers(recurse=False):
+            if buffer.is_floating_point():setattr(module,name,buffer.to(dtype=torch.bfloat16))
+    model.engine.device='cuda'
+    model.engine.enable_cpu_offload()
+    audio=model(prompt=body['prompt'],seconds=float(body['seconds']),max_inference_seconds=max(1,int(float(body['seconds'])+.999)),num_inference_steps=100,cfg_scale=4.0,seed=int(body.get('seed',0)))
     save_audio(output/'effects.wav',audio,48000)
     return [{'name':'effects.wav','sample_rate':48000}]
 

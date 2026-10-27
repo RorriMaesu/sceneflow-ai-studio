@@ -29,6 +29,9 @@ def create_bundle(project_id):
             else:rows=con.execute(f'SELECT * FROM {table} WHERE {column}=?',(project_id,))
             manifest['tables'][table]=[dict(row) for row in rows]
         timeline=con.execute('SELECT * FROM timelines WHERE project_id=?',(project_id,)).fetchone();manifest['timeline']=dict(timeline)
+        from .script_audio import bundle_snapshot
+        manifest['sound']=bundle_snapshot(con,project_id)
+        if manifest['sound'] and any(manifest['sound'].values()):manifest['version']=2
     try:
         with zipfile.ZipFile(temporary,'w',compression=zipfile.ZIP_STORED,allowZip64=True) as archive:
             for asset in manifest['tables']['assets']:
@@ -68,7 +71,7 @@ def restore_bundle(path):
         if 'manifest.json' not in names or archive.getinfo('manifest.json').file_size>50*1024**2:
             raise ValueError('The bundle has no supported project manifest.')
         manifest=json.loads(archive.read('manifest.json'))
-        if manifest.get('format')!='sceneflow-project' or manifest.get('version')!=1 or set(manifest.get('tables',{}))!=set(TABLES):
+        if manifest.get('format')!='sceneflow-project' or manifest.get('version') not in [1,2] or set(manifest.get('tables',{}))!=set(TABLES) or manifest.get('version')==2 and not manifest.get('sound'):
             raise ValueError('Unsupported project bundle format.')
         original=manifest['project'];mapping={original['id']:uid()}
         tables=manifest['tables']
@@ -126,8 +129,11 @@ def restore_bundle(path):
                 if clip['asset_id'] not in asset_rows or asset_rows[clip['asset_id']]['scene_id']!=clip['scene_id']:raise ValueError('Timeline references media outside this bundled scene.')
             for track in timeline.get('audio',[]):
                 if track['asset_id'] not in asset_rows or asset_rows[track['asset_id']]['kind']!='audio':raise ValueError('Timeline references audio outside this bundle.')
+            from .script_audio import migrate as sound_migrate,restore_snapshot,prepare_snapshot
+            prepare_snapshot(manifest.get('sound'),mapping,scene_ids,asset_ids,job_ids)
             project=remap(original,mapping);project.update(title=project['title']+' · Restored',mode='hybrid',revision=1,archived=0,created=now(),updated=now())
             config=remap(json.loads(project['settings']),mapping);config.update(paused=True,qa_enabled=False,planning_approved={});project['settings']=encode(config)
+            sound_migrate(db)
             with db.connect(True) as con:
                 def insert(table,row):
                     allowed={r[1] for r in con.execute(f'PRAGMA table_info({table})')}
@@ -144,6 +150,7 @@ def restore_bundle(path):
                             if row['status'] not in ['completed','failed','cancelled','superseded']:
                                 row['status']='cancelled';row['error']='Restored history. Work is not resumed automatically.'
                         insert(table,row)
+                restore_snapshot(con,manifest.get('sound'),mapping,project_id,insert,remap)
                 timeline=manifest['timeline'];timeline.update(project_id=project_id,revision=1,body=encode(remap(json.loads(timeline['body']),mapping)),updated=now());insert('timelines',timeline)
                 con.execute('INSERT OR REPLACE INTO production_state VALUES(?,1,0)',(project_id,))
         except BaseException:
