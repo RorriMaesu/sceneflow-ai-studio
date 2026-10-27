@@ -134,7 +134,7 @@ async def run(job, runtime_id, inputs, timeout=1800):
     request_hash = hashlib.sha256(request.read_bytes()).hexdigest()
     result.unlink(missing_ok=True)
     environment = storage.worker_environment()
-    environment.update(TORCHDYNAMO_DISABLE='1', TOKENIZERS_PARALLELISM='false', OMP_NUM_THREADS='4')
+    environment.update(TORCHDYNAMO_DISABLE='1', TOKENIZERS_PARALLELISM='false', OMP_NUM_THREADS='4',SCENEFLOW_ADMITTED_JOB=job['id'])
     with (folder / 'worker.log').open('wb') as log:
         process = subprocess.Popen([str(python), '-I', str(script), '--input', str(request), '--sha256', request_hash],
                                    stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,

@@ -1,20 +1,22 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { request } from "./api";
+import { request, useConnection } from "./api";
 import "./setup.css";
 
 const size = (n: number) => n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${Math.ceil(n / 1e6)} MB`;
 const labels: Record<string, string> = { models: "Creation tools", cache: "Temporary files", images: "Pictures", videos: "Video clips", music: "Music", speech: "Speech", effects: "Sound effects", exports: "Finished videos", backups: "Backups" };
-const states: Record<string, string> = { needs_download: "Needs download", needs_test: "Needs a sample test", setup_required: "Setup required", storage_missing: "Reconnect drive", ready: "Ready on this PC" };
+const states: Record<string, string> = { needs_download: "1 · Download files", needs_runtime: "2 · Finish program setup", needs_test: "3 · Run a sample", setup_required: "Setup required", storage_missing: "Reconnect drive", ready: "Ready on this PC" };
 
 export function StudioSetup({ act, done }: { act: any; done?: () => void }) {
   const query = useQuery({ queryKey: ["studio-setup"], queryFn: () => request("/api/setup"), refetchInterval: 3000 });
   const [busy, setBusy] = useState(false);
   const [quote, setQuote] = useState<any>();
+  const [runtimeQuote, setRuntimeQuote] = useState<any>();
+  const [sample, setSample] = useState("");
   const [updates, setUpdates] = useState<any[]>();
   const [selectedRoot, setSelectedRoot] = useState("");
   const data = query.data;
-  useEffect(() => { if (quote) { const review = document.getElementById("download-review"); review?.scrollIntoView({ block: "start" }); review?.focus({ preventScroll: true }); } }, [quote]);
+  useEffect(() => { if (quote || runtimeQuote) { const review = document.getElementById("download-review"); review?.scrollIntoView({ block: "start" }); review?.focus({ preventScroll: true }); } }, [quote, runtimeQuote]);
   async function run(action: () => Promise<any>, message = "Setup updated.") {
     if (busy) return;
     setBusy(true);
@@ -75,13 +77,19 @@ export function StudioSetup({ act, done }: { act: any; done?: () => void }) {
           <div><h4>{p.name}</h4><span className="badge">{states[p.state] || p.state}</span></div>
           <p>{p.reason}</p>
           <div className="button-row">
-            <button className="button" disabled={busy || !hasFolders || ["setup_required", "storage_missing", "ready"].includes(p.state) || p.installed} onClick={() => run(async () => setQuote(await request(`/api/setup/packs/${p.id}/quote`, {})), "Download size and folder checked.")}>{p.installed ? "Files downloaded" : p.bytes ? `Review ${size(p.bytes)} download` : "Setup required"}</button>
+            {!p.installed && <button className="button" disabled={busy || !hasFolders || ["setup_required", "storage_missing"].includes(p.state)} onClick={() => run(async () => { setRuntimeQuote(undefined);setQuote(await request(`/api/setup/packs/${p.id}/quote`, {})); }, "Download size and folder checked.")}>{p.bytes ? `Review ${size(p.bytes)} download` : "Setup required"}</button>}
+            {p.state === "needs_runtime" && <button className="button primary" disabled={busy || data.runtime_jobs?.some((j:any)=>["queued","installing"].includes(j.status))} onClick={() => run(async () => { setQuote(undefined);setRuntimeQuote(await request(`/api/setup/packs/${p.id}/runtime-quote`, {})); }, "Program setup checked.")}>Finish program setup</button>}
+            {["needs_test","ready"].includes(p.state) && ["voices-small","music","effects"].includes(p.id) && <button className="button" disabled={busy} onClick={() => run(() => request(`/api/setup/packs/${p.id}/sample`, {}), "Sample queued. You can keep using your studio while it runs.")}>{p.state === "ready" ? "Run another sample" : "Run a short sample"}</button>}
+            {data.samples?.[p.id]?.asset_id && <button className="button" onClick={()=>run(async()=>{const v=await request(`/api/assets/${data.samples[p.id].asset_id}/ticket`,{});setSample(useConnection.getState().url+v.url);},"Sample ready to listen.")}>Listen to sample</button>}
             <details><summary>Tool details</summary><p>{p.repo} · {p.license}</p><p>Version: {p.revision.slice(0, 12)}</p><a href={p.source} target="_blank" rel="noreferrer">Official source</a></details>
           </div>
         </article>)}
       </div>
       {!hasFolders && <p>Choose your folders above before reviewing a download.</p>}
     </details>
+    {sample && <div className="panel"><p>Listen before using this tool in your story.</p><audio src={sample} controls /></div>}
+    {runtimeQuote && <section className="panel settings-panel" id="download-review" tabIndex={-1} aria-label="Review program setup"><h3>Finish this tool’s program setup</h3><p>Up to <strong>{size(runtimeQuote.download_bytes_upper)}</strong> to download. Allow 12 GB of free working space for this step. Shared files can reduce the download.</p><p>Save to: {runtimeQuote.destination}</p><p>{runtimeQuote.note}</p><div className="button-row"><button className="button primary" disabled={busy} onClick={()=>run(async()=>{const r=await request('/api/setup/runtimes',{quote_id:runtimeQuote.id,confirm:true});setRuntimeQuote(undefined);return r;},"Program setup queued.")}>Set up this tool</button><button className="button" disabled={busy} onClick={()=>setRuntimeQuote(undefined)}>Not now</button></div></section>}
+    {data.runtime_jobs?.filter((j:any)=>j.status!=="completed").map((j:any)=><section className="panel settings-panel" key={j.id}><h3>{j.runtime_id === "speech" ? "Voices" : j.runtime_id === "music" ? "Music" : "Sound effects"} program setup</h3><p role="status">{j.step}</p>{j.error && <p role="alert">{j.error}</p>}{j.status === "failed" && <p>Choose “Finish program setup” above to retry using the saved download cache.</p>}</section>)}
     {quote && <section className="panel settings-panel" id="download-review" tabIndex={-1} aria-label="Review download">
       <h3>Review this download</h3>
       <p><strong>{size(quote.download_bytes)}</strong> to download · {size(quote.pack_bytes)} installed files</p>

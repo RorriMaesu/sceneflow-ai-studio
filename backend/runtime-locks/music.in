@@ -1,0 +1,27 @@
+setuptools==71.1.0
+wheel
+numpy==1.26.4
+torch @ https://download-r2.pytorch.org/whl/cu128/torch-2.7.1%2Bcu128-cp312-cp312-win_amd64.whl#sha256=2bb8c05d48ba815b316879a18195d53a6472a03e297d971e916753f8e1053d30
+torchaudio @ https://download-r2.pytorch.org/whl/cu128/torchaudio-2.7.1%2Bcu128-cp312-cp312-win_amd64.whl#sha256=4586e3106701b06a4f9377f5c1da9e1d8555e16bd58fd7d810aa3f6cf50bd713
+torchvision @ https://download-r2.pytorch.org/whl/cu128/torchvision-0.22.1%2Bcu128-cp312-cp312-win_amd64.whl#sha256=650561ba326d21021243f5e064133dc62dc64d52f79623db5cd76637a9665f96
+hatchling
+transformers==4.57.3
+diffusers==0.37.1
+gradio==6.2.0
+matplotlib
+scipy
+soundfile==0.13.1
+loguru==0.7.3
+einops==0.8.2
+accelerate==1.12.0
+diskcache
+numba==0.63.1
+vector-quantize-pytorch==1.27.15
+peft==0.18.0
+lycoris-lora
+modelscope
+typer-slim
+pytorch-wavelets
+pywavelets
+toml
+pyyaml

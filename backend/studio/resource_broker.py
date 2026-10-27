@@ -126,6 +126,9 @@ class ResourceBroker:
 
     async def prepare_backend(self, job):
         """Only release cached Studio-owned Comfy weights after checking it is idle."""
+        from .runtime_installer import busy_reason
+        if reason := busy_reason():
+            return reason
         from .provider_workers import active_reason
         reason = active_reason(job['id'])
         if reason:

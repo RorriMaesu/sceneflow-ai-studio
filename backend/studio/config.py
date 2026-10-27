@@ -4,8 +4,8 @@ import secrets
 import time
 from pathlib import Path
 
-VERSION = '0.14.0'
-PHASE = 'Phase 14 · Shared memory protection'
+VERSION = '0.15.0'
+PHASE = 'Phase 15 · Cast, scripts and local voices'
 ROOT = Path(os.environ.get('STUDIO_ROOT', Path(__file__).resolve().parents[2])).resolve()
 PORT = int(os.environ.get('STUDIO_PORT', '8770'))
 for name in ['config', 'database', 'cache', 'temp', 'logs', 'projects', 'backups', 'workflows']:

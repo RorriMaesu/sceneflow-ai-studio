@@ -2,7 +2,7 @@
 
 A local filmmaking studio for planning scenes, generating starting stills, animating their exact images, reviewing takes and assembling a movie. The public React interface connects to an authenticated Windows agent on your computer.
 
-**Release 0.14 — guided setup and shared memory protection.** Setup & downloads helps you choose folders and add only the creation tools you need. Exact download sizes, pinned versions, integrity checks and pause/resume protect the existing studio. The generation queue now checks graphics memory, system memory and durable process ownership before loading models. [Full studio release ledger](docs/FULL_SUITE_RELEASES.md). The five-step video workflow, protected drafts and direct MP4 downloads remain available. [Usability release evidence](docs/USABILITY_RELEASES.md).
+**Release 0.15 — cast, scripts and local voices.** Add characters and editable dialogue in Story or Edit, create speech, listen to takes and place the recording in your edit. Setup separates model downloads, private program setup and a successful sample on this PC. Exact versions, hashes and the shared graphics queue preserve reproducibility. [Full studio release ledger](docs/FULL_SUITE_RELEASES.md). Music/effects adapters remain unavailable for production until their own samples pass. LTX remains deferred.
 
 - [Published interface](https://rorrimaesu.github.io/sceneflow-ai-studio/)
 - [Verification ledger](docs/EVIDENCE.md)

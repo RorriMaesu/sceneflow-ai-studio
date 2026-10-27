@@ -79,6 +79,9 @@ async def cancel(identifier:str,session=Depends(require_session)):
     if job['status'] in ['queued','awaiting_review']:
         update_job(identifier,'cancelled',finished=now())
         return {'cancelled':True}
+    if job['status']=='running' and job['kind'] in {'speech','music','effects'}:
+        db.execute('UPDATE jobs SET cancel_requested=1 WHERE id=?',(identifier,))
+        return {'cancelled':False,'detail':'Stopping this Studio-owned sound task; the queue waits until its process has stopped.'}
     if job['status'] not in ACTIVE or job['kind'] not in ['image','video'] or not job['comfy_prompt_id']:
         raise HTTPException(409,'This job cannot be cancelled from its current state.')
     try:

@@ -190,7 +190,8 @@ def require_space(folder, required):
 
 def worker_environment():
     cache = role_folder('cache')
-    return {**os.environ, 'TEMP': str(cache), 'TMP': str(cache), 'HF_HOME': str(cache / 'huggingface'),
+    environment = {k:v for k,v in os.environ.items() if not k.upper().endswith(('_TOKEN','_SECRET','_PASSWORD','_API_KEY')) and not k.upper().startswith(('AWS_','AZURE_'))}
+    return {**environment, 'TEMP': str(cache), 'TMP': str(cache), 'HF_HOME': str(cache / 'huggingface'),
             'TORCH_HOME': str(cache / 'torch'), 'PIP_CACHE_DIR': str(cache / 'pip'),
             'XDG_CACHE_HOME': str(cache / 'xdg'), 'HF_HUB_OFFLINE': '1', 'TRANSFORMERS_OFFLINE': '1',
             'PYTHONIOENCODING': 'utf-8', 'HF_HUB_DISABLE_TELEMETRY': '1'}

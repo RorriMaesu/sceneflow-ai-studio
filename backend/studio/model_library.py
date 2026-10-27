@@ -72,6 +72,14 @@ def list_packs():
                 storage.checked_root(install['root_id'])
                 state = 'needs_test'
                 reason = 'Files verified. Install the isolated runtime and run a short sample before production.'
+                from .audio_engine import PROVIDERS, qualification, runtime_record
+                if value['id'] in PROVIDERS:
+                    if not runtime_record(value['id']):
+                        state, reason = 'needs_runtime', 'Model files downloaded. Finish program setup, then run a sample.'
+                    elif qualification(value['id']):
+                        state, reason = 'ready', 'A sample passed on this PC. Listen to it before using this tool in your story.'
+                    else:
+                        reason = 'Program and model files are ready. Run a sample to check this PC.'
             except ValueError:
                 state = 'storage_missing'
                 reason = 'Reconnect the drive that holds this tool.'
@@ -252,7 +260,8 @@ class DownloadManager:
                 done += item['bytes']
         if cancelled(row['id'], body['session']):
             raise DownloadPaused()
-        db.execute('INSERT OR REPLACE INTO model_installs VALUES(?,?,?,?,?)', (value['id'], value['revision'], row['root_id'], encode({'manifest_hash': manifest_hash(value)}), now()))
+        stamps={item['path']:[file_path(value,row['root_id'],item).stat().st_size,file_path(value,row['root_id'],item).stat().st_mtime_ns] for item in value['files']}
+        db.execute('INSERT OR REPLACE INTO model_installs VALUES(?,?,?,?,?)', (value['id'], value['revision'], row['root_id'], encode({'manifest_hash': manifest_hash(value),'fingerprints':stamps}), now()))
         update(row['id'], 'completed', bytes_done=done, error=None)
         db.event('model.downloaded', {'pack_id': value['id'], 'download_id': row['id']})
 

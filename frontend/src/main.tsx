@@ -78,6 +78,7 @@ import { SaveVideoPage } from "./save-video";
 import { ActivityPage } from "./activity-page";
 import { FriendlySettings } from "./settings-page";
 import { StudioSetup } from "./studio-setup";
+import { SoundStudio } from "./sound-studio";
 import { ProjectSteps, NextStep, StoryGuide, HelpPage } from "./guided-project";
 import { PAGE_NAMES, STEPS } from "./flow";
 import { NewVideoWizard } from "./new-video";
@@ -1137,6 +1138,7 @@ function Studio() {
                   {page === "Storyboard" && (
                     <StoryGuide project={project} go={go} act={act} />
                   )}
+                  {['Storyboard','Timeline'].includes(page) && <SoundStudio key={project.id} project={project} act={act} renderMedia={(a)=><Media asset={a}/>} goSetup={()=>go('Setup')}/>}
                   {page === "Image Studio" && (
                     <VisualBible
                       key={project.id}

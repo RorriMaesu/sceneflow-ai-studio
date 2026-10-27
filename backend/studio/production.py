@@ -239,6 +239,7 @@ def supersede_pending(scene_id):
     project = db.project(scene['project_id'])
     pending = db.all("SELECT * FROM jobs WHERE scene_id=? AND status IN ('queued','awaiting_review')",(scene_id,))
     for job in pending:
+        if job['kind'] not in {'image','video'}:continue
         old = json.loads(job['snapshot'])
         if old.get('edit_operation'):continue
         source = current_source(scene) if job['kind']=='video' else None
@@ -374,7 +375,8 @@ class Dispatcher:
             explicit=not snap.get('automatic') and (job['kind'] in ['export','qa'] or snap.get('manual_override')) and snap.get('manual_requested_at',job['created'])>(run['paused_at'] if run else 0)
             if job['scene_id'] and db.scene(job['scene_id'])['body'].get('disabled'):
                 continue
-            if (control['paused'] and not explicit) or project['archived'] or (project['mode']=='manual' and snap.get('automatic')):
+            setup_probe = snap.get('setup_probe') and json.loads(project['settings']).get('setup_samples') and job['kind'] in {'speech','music','effects'}
+            if (control['paused'] and not explicit) or (project['archived'] and not setup_probe) or (project['mode']=='manual' and snap.get('automatic')):
                 continue
             config=json.loads(project['settings'])
             budget=float(config.get('run_budget_minutes',0))
@@ -703,7 +705,10 @@ class Dispatcher:
                     break
 
     async def execute_other(self,job,snapshot):
-        if job['kind'] in ['plan','director']:
+        if job['kind'] in ['speech','music','effects']:
+            from .audio_engine import execute
+            await execute(job,snapshot)
+        elif job['kind'] in ['plan','director']:
             from .director import execute_ai
             await execute_ai(job,snapshot)
         elif job['kind']=='qa':

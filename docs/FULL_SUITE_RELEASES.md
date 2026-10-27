@@ -25,6 +25,14 @@ The setup flow now reveals optional tools on demand, focuses the download review
 
 Validation: 120 backend checks passed locally with FFmpeg/FFprobe available and test scratch on the media drive. Fourteen frontend checks passed in the preceding setup phase; the final interface build passed. The named-lock test uses a real competing process. Worker tests verify stopping the exact owned process and preserving a mismatched/reused PID. Live inference and CI evidence accompany this phase's publication.
 
+## Phase 15 — Private runtimes, script lines and preset voices
+
+Pinned Windows/Python 3.12 runtime recipes install into registered media storage with verified package hashes and separate environments. The reviewed setup transaction is session-bound; retries reuse the package cache. Program imports alone never qualify a model. Setup now offers program setup, sample creation and listening as separate, plain-language actions.
+
+Story and Edit expose characters, preset voices, script lines, language, recording and placement. Line revisions retain old recordings; a result from an earlier script revision cannot silently become the current line. Sounds are placed explicitly, and export uses the existing 48 kHz mix/ducking pipeline. Voice cloning and acting instructions are not advertised for the small preset voice pack.
+
+Actual local Qwen3-TTS speech completed through the shared GPU queue and passed full audio decoding. Eight focused checks passed for script history, cross-production ownership, unsafe source archives, setup-only archived jobs, readiness gates, unsupported delivery instructions, session-bound approval and cancellation. The interface production build passed. Music and effects adapters are included for qualification in Phase 16; they remain gated by their own samples.
+
 ## Remaining phases
 
-15: script lines/cast voices and real speech. 16: music/effects. 17: shows/films and shared continuity. 18: music-video timing, lip-sync and captions. 19: long-form sequences and resumable assembly. 20: conditional LTX and staged updates. These are not claimed as delivered by Phase 14.
+16: music/effects qualification. 17: shows/films and shared continuity. 18: music-video timing, lip-sync and captions. 19: long-form sequences and resumable assembly. 20: conditional LTX and staged updates. These are not claimed as delivered by Phase 15.

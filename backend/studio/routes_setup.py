@@ -8,7 +8,7 @@ from . import model_library, storage
 from .config import VERSION, settings, save_settings
 from .resources import resources, services
 from .security import require_session
-from .store import db, now
+from .store import db, now, uid, encode
 
 router = APIRouter(prefix='/api/setup')
 
@@ -33,10 +33,13 @@ class Install(Strict):
 @router.get('')
 async def readiness(session=Depends(require_session)):
     from .resource_broker import status as memory_status
+    from .runtime_installer import jobs as runtime_jobs
+    from .audio_engine import qualification
     folders = storage.status()
     local = await services(True)
     return {'version': VERSION, 'storage': folders, 'resources': resources(), 'services': local, 'memory_manager': memory_status(),
             'packs': model_library.list_packs(), 'downloads': model_library.downloads(),
+            'runtime_jobs': runtime_jobs(), 'samples': {p: (qualification(p) or {}).get('body') for p in ['voices-small','music','effects']},
             'setup_complete': bool(settings.get('setup_complete')),
             'can_use_existing_tools': local['comfy']['connected'],
             'next_action': 'Choose where your files go.' if not folders['routes'] else 'Choose only the tools your production needs.'}
@@ -107,3 +110,37 @@ async def resume_download(identifier: str, session=Depends(require_session)):
 @router.post('/updates/check')
 async def updates(session=Depends(require_session)):
     return await model_library.check_updates()
+
+
+@router.post('/packs/{identifier}/runtime-quote')
+async def runtime_quote(identifier:str,session=Depends(require_session)):
+    from .runtime_installer import PACK_RUNTIME,quote,migrate
+    if identifier not in PACK_RUNTIME:raise ValueError('This tool does not have an automatic program setup yet.')
+    migrate()
+    value=await asyncio.to_thread(quote,PACK_RUNTIME[identifier])
+    value['id']=uid()
+    db.execute('INSERT INTO runtime_quotes VALUES(?,?,?,?,0)',(value['id'],session['hash'],encode(value),now()+1800))
+    return value
+
+
+@router.post('/runtimes')
+async def install_runtime(body:Install,session=Depends(require_session)):
+    from .runtime_installer import queue,migrate,manifest
+    migrate()
+    with db.connect(True) as con:
+        row=con.execute('SELECT * FROM runtime_quotes WHERE id=? AND session=? AND expires>? AND used=0',(body.quote_id,session['hash'],now())).fetchone()
+        if not body.confirm or not row:raise ValueError('Review and confirm the program setup size and folder first.')
+        value=json.loads(row['body'])
+        if manifest(value['runtime_id'])['hash']!=value['manifest_hash']:raise ValueError('The setup recipe changed. Review setup again.')
+        con.execute('UPDATE runtime_quotes SET used=1 WHERE id=?',(body.quote_id,))
+    return queue(value['runtime_id'],value['root_id'])
+
+
+class Probe(Strict):
+    seconds:float|None=Field(default=None,ge=1,le=60,allow_inf_nan=False)
+
+
+@router.post('/packs/{identifier}/sample')
+async def sample(identifier:str,body:Probe,session=Depends(require_session)):
+    from .audio_engine import queue_probe
+    return await asyncio.to_thread(queue_probe,identifier,body.seconds)

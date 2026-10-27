@@ -24,12 +24,15 @@ log = logging.getLogger('studio')
 async def lifespan(app):
     from .production import dispatcher
     from .model_library import manager as downloads
+    from .runtime_installer import manager as runtimes
     await downloads.start()
+    await runtimes.start()
     await dispatcher.start()
     try:
         yield
     finally:
         await dispatcher.stop()
+        await runtimes.stop()
         await downloads.stop()
 
 
@@ -319,6 +322,8 @@ from .maintenance import router as maintenance_router
 app.include_router(maintenance_router)
 from .routes_setup import router as setup_router
 app.include_router(setup_router)
+from .routes_audio import router as audio_router
+app.include_router(audio_router)
 
 
 @app.get('/{path:path}')

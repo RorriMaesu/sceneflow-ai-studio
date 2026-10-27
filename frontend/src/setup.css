@@ -1,6 +1,16 @@
 .studio-setup { max-width: 1080px; display: grid; gap: 20px; }
 .studio-setup > p { max-width: 75ch; }
-.studio-setup .settings-panel { display: grid; gap: 16px; padding: 24px; }
+.studio-setup .settings-panel { display: grid; gap: 14px; padding: 24px; margin: 0; }
+.studio-setup .settings-panel h3 { margin: 0; }
+.studio-setup .settings-panel p { font-size: 15px; line-height: 1.55; margin: 0; }
+.studio-setup summary { font-size: 16px; cursor: pointer; }
+.sound-studio { padding: 24px; margin: 24px 0; }
+.sound-studio p { font-size: 15px; line-height: 1.55; }
+.sound-studio h3 { margin: 20px 0 12px; }
+.sound-studio label { display: grid; gap: 7px; margin: 12px 0; max-width: 720px; }
+.sound-studio details { margin: 18px 0; }
+.sound-studio summary { cursor: pointer; font-size: 16px; }
+.sound-studio audio { width: 100%; max-width: 720px; }
 .setup-tools { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px; }
 .setup-tool { min-width: 0; display: grid; align-content: start; gap: 12px; padding-block: 16px; border-top: 1px solid var(--line); }
 .setup-tool h4 { font-size: 17px; margin-bottom: 8px; }
