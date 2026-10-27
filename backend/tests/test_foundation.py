@@ -52,6 +52,16 @@ def test_project_persists_after_database_reopen(connected):
     assert Store(store.path).project(p['id'])['title'] == 'A new film'
 
 
+@pytest.mark.parametrize('shape,dimensions',[('landscape',(1920,1080)),('portrait',(1080,1920)),('square',(1080,1080))])
+def test_new_video_shape_is_initialized_without_saving_an_empty_edit(connected,shape,dimensions):
+    client,headers,store=connected
+    response=client.post('/api/projects',json={'title':'New video','settings':{'video_shape':shape}},headers=headers)
+    assert response.status_code==200
+    p=response.json();assert not p['timeline']['clips']
+    assert (p['timeline']['settings']['width'],p['timeline']['settings']['height'])==dimensions
+    assert p['timeline']['revision']==1 and store.project(p['id'])['settings']['paused']
+
+
 def test_scene_revisions_are_immutable_and_conflicts_are_explicit(connected):
     client, headers, store = connected
     p = client.post('/api/projects', json={'title': 'Test'}, headers=headers).json()
@@ -116,6 +126,43 @@ def test_media_ranges_are_scoped_and_revoked(connected):
     assert client.get(ticket.replace(assets[0],assets[1]),headers={'Origin':headers['Origin']}).status_code==401
     client.post('/api/session/revoke',headers=headers)
     assert client.get(ticket,headers={'Origin':headers['Origin']}).status_code==403
+
+
+def test_video_download_is_an_attachment_scoped_to_asset_and_live_session(connected,tmp_path,monkeypatch):
+    from studio import media
+    from studio.store import uid
+    client,headers,store=connected;monkeypatch.setattr(media,'ROOT',tmp_path)
+    p=store.create_project('A video: safe/name');folder=tmp_path/'projects'/p['id'];folder.mkdir(parents=True)
+    file=folder/'video.mp4';file.write_bytes(b'download-boundary-test')
+    ids=[uid(),uid()]
+    for identifier in ids:store.execute('INSERT INTO assets(id,project_id,kind,path,metadata) VALUES(?,?,?,?,?)',(identifier,p['id'],'export',str(file.relative_to(tmp_path)),'{}'))
+    assert client.post('/api/assets/'+ids[0]+'/download-ticket').status_code==401
+    url=client.post('/api/assets/'+ids[0]+'/download-ticket',headers=headers).json()['url']
+    response=client.get(url,headers={'Origin':headers['Origin']})
+    assert response.status_code==200 and response.content==file.read_bytes()
+    assert 'attachment;' in response.headers['content-disposition'] and 'safe/name' not in response.headers['content-disposition']
+    assert client.get(url.replace(ids[0],ids[1]),headers={'Origin':headers['Origin']}).status_code==401
+    media_url=client.post('/api/assets/'+ids[0]+'/ticket',headers=headers).json()['url']
+    assert client.get(media_url.replace('/media/','/downloads/'),headers={'Origin':headers['Origin']}).status_code==401
+    client.post('/api/session/revoke',headers=headers)
+    assert client.get(url,headers={'Origin':headers['Origin']}).status_code==403
+
+
+def test_show_in_folder_accepts_only_registered_exports(connected,tmp_path,monkeypatch):
+    import os,subprocess
+    from studio import media
+    from studio.store import uid
+    client,headers,store=connected;monkeypatch.setattr(media,'ROOT',tmp_path)
+    p=store.create_project('Reveal');folder=tmp_path/'projects'/p['id'];folder.mkdir(parents=True)
+    file=folder/'video.mp4';file.write_bytes(b'owned file');identifier=uid()
+    store.execute('INSERT INTO assets(id,project_id,kind,path,metadata) VALUES(?,?,?,?,?)',(identifier,p['id'],'export',str(file.relative_to(tmp_path)),'{}'))
+    calls=[];monkeypatch.setattr(subprocess,'Popen',lambda args,**kwargs:calls.append((args,kwargs)))
+    assert client.post('/api/assets/'+identifier+'/reveal').status_code==401
+    assert client.post('/api/assets/unknown/reveal',headers=headers).status_code==422
+    response=client.post('/api/assets/'+identifier+'/reveal',headers=headers)
+    assert response.status_code==(200 if os.name=='nt' else 422)
+    if os.name=='nt':assert calls[0][0]==['explorer.exe','/select,',str(file)]
+    else:assert not calls
 
 
 def test_existing_websocket_closes_after_session_revocation(connected):

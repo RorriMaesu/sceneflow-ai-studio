@@ -29,3 +29,19 @@ Scene review now has a larger current preview beside its editing controls, a com
 Director requests show their target scene/video. Proposals show named scenes and readable current/proposed values, distinguish requested operations, and block outdated proposals. The Look section consolidates style, consistency guidance and owned references without discarding existing values.
 
 Existing scene drafts migrate into the shared recoverable-draft format. Live browser testing retained a temporary scene title across navigation and restored the saved title through Discard. The Director opened with the exact selected scene as its visible target. Eleven frontend checks and the production build passed. Manual control has its own truthful status without a misleading global Resume button.
+
+Phase 11 commit `f49362f` passed deployment run `40536053461`.
+
+## Phase 12 — Easy finishing and recovery
+
+Save video distinguishes an unapplied draft, an empty edit, work in progress, previews, earlier versions and the current saved result. It offers a protected MP4 download and Show in folder for owned Windows exports. Asset-scoped download tickets are separate from playback tickets and stop working when their session is revoked. Native folder selection is tested with a mocked process launcher; visual Explorer behavior remains unverified.
+
+Settings now separates notifications, connection help and advanced troubleshooting/maintenance. Activity names the video and task in plain language, offers explicit scope/history filters, and preserves careful recovery of uncertain submissions. Errors remain visible until dismissed. Advanced actions and all three production modes remain available.
+
+Live acceptance created a Manual project through the new form, imported existing proof media, built a two-clip edit, protected its drafts across navigation/reload, blocked an unapplied draft from export, and saved after rapid navigation. Its actual browser download matched the registered output hash and passed full decode: 1920×1080 H.264, 30 fps, 120 frames, 4.0 seconds, silent. This is an editing/download proof using existing footage, not a claim of new diffusion generation.
+
+The corrected guided AI setup also created a tall-video project with 1080×1920 export settings and ran the installed local Director. One real planning job completed with four proposed scenes, still unapplied for review; no photo/video generation job was started. Shape initialization no longer tries to save an empty edit.
+
+Final acceptance caught stale cached revisions and saves completing after a screen unmounts. Applied drafts are now cleared synchronously, same-window draft changes refresh finishing controls, and server-only timeline bookkeeping does not create false creative conflicts. A newer genuinely different saved version still blocks overwrite. Tests cover all three output shapes and these draft cases.
+
+Final frontend checks: 14 passed; local production checks: 27 passed; local foundation/security checks: 20 passed. The complete deployment gate runs the final 87 backend tests and all 14 frontend tests plus the production build. This is expert/browser acceptance, not a novice-user study or full accessibility certification. Standalone Edge/Chrome permission cases, screen readers and native tray delivery remain unverified.

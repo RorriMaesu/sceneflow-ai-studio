@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { request } from "./api";
 import type { Project, Workflow } from "./types";
-import {useRecoverableDraft,DraftNotice} from "./recoverable-draft";
+import { useRecoverableDraft, DraftNotice } from "./recoverable-draft";
 
 export function ProductionSettings({
   project,
@@ -15,10 +15,22 @@ export function ProductionSettings({
   models: any[];
   act: any;
 }) {
-  const draft=useRecoverableDraft('settings.'+project.id,{settings:project.settings,brief:project.brief},project.revision,v=>!!v?.settings&&typeof v?.brief==='string');
-  const values=draft.value.settings,brief=draft.value.brief,dirty=draft.dirty,base=draft.revision;
-  const setValues=(next:import('react').SetStateAction<typeof values>)=>draft.setValue(v=>({...v,settings:typeof next==='function'?next(v.settings):next}));
-  const setBrief=(brief:string)=>draft.setValue(v=>({...v,brief}));
+  const draft = useRecoverableDraft(
+    "settings." + project.id,
+    { settings: project.settings, brief: project.brief },
+    project.revision,
+    (v) => !!v?.settings && typeof v?.brief === "string",
+  );
+  const values = draft.value.settings,
+    brief = draft.value.brief,
+    dirty = draft.dirty,
+    base = draft.revision;
+  const setValues = (next: import("react").SetStateAction<typeof values>) =>
+    draft.setValue((v) => ({
+      ...v,
+      settings: typeof next === "function" ? next(v.settings) : next,
+    }));
+  const setBrief = (brief: string) => draft.setValue((v) => ({ ...v, brief }));
   const available = useQuery<any[]>({
     queryKey: ["vision-models"],
     queryFn: () => request("/api/language-models"),
@@ -32,7 +44,7 @@ export function ProductionSettings({
       <summary>
         Production settings · models, approvals & creative brief
       </summary>
-      <DraftNotice draft={draft}/>
+      <DraftNotice draft={draft} />
       <div className="settings-grid">
         <label>
           Creative brief
@@ -41,7 +53,7 @@ export function ProductionSettings({
             value={brief}
             onChange={(e) => {
               setBrief(e.target.value);
-                    }}
+            }}
           />
         </label>
         <p>Edit style and character references in Look & photos.</p>
@@ -116,7 +128,7 @@ export function ProductionSettings({
               };
               if (presets[e.target.value]) {
                 setValues((v) => ({ ...v, ...presets[e.target.value] }));
-                        }
+              }
             }}
           >
             <option value="">Choose a preset or keep custom settings</option>
@@ -316,7 +328,7 @@ export function ProductionSettings({
           Export automatically when reviews are clear
         </label>
       </div>
-      {dirty && base !== project.revision && (
+      {dirty && project.revision > base && (
         <p role="alert">
           The project changed elsewhere. Reload these controls before replacing
           newer settings.
@@ -325,7 +337,7 @@ export function ProductionSettings({
       <div className="button-row">
         <button
           className="button primary"
-          disabled={!dirty||draft.conflict}
+          disabled={!dirty || draft.conflict}
           onClick={() =>
             act(async () => {
               const p = await request(
@@ -333,7 +345,7 @@ export function ProductionSettings({
                 { revision: base, brief, settings: values },
                 "PATCH",
               );
-              draft.adopt({settings:p.settings,brief:p.brief},p.revision);
+              draft.adopt({ settings: p.settings, brief: p.brief }, p.revision);
             }, "Production settings saved.")
           }
         >

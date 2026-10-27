@@ -27,7 +27,7 @@ export function ReadinessCoach({
             ? "Start ComfyUI, then refresh the workflow library."
             : !count
               ? "Your local services are connected. Create a project, choose a visual reference and add your first scene."
-              : "Open a production to review its visual bible, selected takes and waiting jobs."}
+              : "Open a video, then follow its five steps. Review your photos and clips as you go."}
       </p>
       <div className="readiness-steps">
         <span className={connected ? "ready" : ""}>
@@ -62,11 +62,11 @@ export function NotificationSettings() {
   );
   return (
     <details className="panel">
-      <summary>Completion notifications</summary>
+      <summary>Browser alerts while this page is open</summary>
       <p>
-        Notify this browser when a generation or export completes or fails. The
-        browser must remain open; the local agent keeps producing if you close
-        it.
+        Notify this browser when creating media or saving a video completes or
+        fails. The browser must remain open; the local agent keeps producing if
+        you close it.
       </p>
       <p>
         Permission: {permission} · {enabled ? "Enabled" : "Off"}

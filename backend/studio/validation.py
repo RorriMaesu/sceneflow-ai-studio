@@ -3,6 +3,7 @@ import math
 
 def project_settings(values):
     if not isinstance(values,dict):raise ValueError('Project settings must be an object.')
+    if 'video_shape' in values and values['video_shape'] not in ['landscape','portrait','square']:raise ValueError('Choose a supported video shape.')
     if 'visual_rules' in values and (not isinstance(values['visual_rules'],str) or len(values['visual_rules'])>6000):raise ValueError('Keep locked visual rules under 6000 characters.')
     bounds={'scene_count':(1,40),'width':(64,2048),'height':(64,2048),'fps':(1,60),'frames':(1,241),'image_steps':(1,60),'candidates':(1,4),'video_attempts':(1,4),'run_budget_minutes':(0,1440),'max_retries':(0,2),'qa_threshold':(0,1)}
     for key,(low,high) in bounds.items():

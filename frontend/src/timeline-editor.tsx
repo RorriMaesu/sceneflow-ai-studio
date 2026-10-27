@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { request, upload } from "./api";
 import { TimelinePreview, AudioWaveform } from "./timeline-preview";
 import type { Asset, Project } from "./types";
-import {useRecoverableDraft,DraftNotice} from "./recoverable-draft";
+import { useRecoverableDraft, DraftNotice } from "./recoverable-draft";
 
 export function TimelineEditor({
   project,
@@ -14,13 +14,18 @@ export function TimelineEditor({
   act: any;
   renderMedia: (a?: Asset) => React.ReactNode;
 }) {
-  const draft=useRecoverableDraft('timeline.'+project.id,project.timeline,project.timeline.revision,v=>Array.isArray(v?.clips)&&Array.isArray(v?.audio)&&!!v?.settings);
-  const {value,setValue,dirty}=draft;
-  const revision=draft.revision;
-  const [zoom,setZoom]=useState(1);
-  const [past,setPast]=useState<any[]>([]);
-  const [future,setFuture]=useState<any[]>([]);
-  const dragged=useRef<number|null>(null);
+  const draft = useRecoverableDraft(
+    "timeline." + project.id,
+    project.timeline,
+    project.timeline.revision,
+    (v) => Array.isArray(v?.clips) && Array.isArray(v?.audio) && !!v?.settings,
+  );
+  const { value, setValue, dirty } = draft;
+  const revision = draft.revision;
+  const [zoom, setZoom] = useState(1);
+  const [past, setPast] = useState<any[]>([]);
+  const [future, setFuture] = useState<any[]>([]);
+  const dragged = useRef<number | null>(null);
   const assets = useQuery<Asset[]>({
     queryKey: ["project-assets", project.id],
     queryFn: () => request("/api/assets?project_id=" + project.id),
@@ -59,7 +64,7 @@ export function TimelineEditor({
       ),
     });
   const adopt = (v: any) => {
-    draft.adopt(v,v.revision);
+    draft.adopt(v, v.revision);
     setPast([]);
     setFuture([]);
     history.refetch();
@@ -70,7 +75,7 @@ export function TimelineEditor({
   );
   return (
     <section className="panel timeline-editor">
-      <DraftNotice draft={draft}/>
+      <DraftNotice draft={draft} />
       <div className="section-heading">
         <div>
           <h2>Your final cut</h2>
@@ -110,7 +115,7 @@ export function TimelineEditor({
               setFuture((f) => [value, ...f]);
               setValue(past[past.length - 1]);
               setPast((p) => p.slice(0, -1));
-                      }}
+            }}
           >
             Undo
           </button>
@@ -121,7 +126,7 @@ export function TimelineEditor({
               setPast((p) => [...p, value]);
               setValue(future[0]);
               setFuture((f) => f.slice(1));
-                      }}
+            }}
           >
             Redo
           </button>
@@ -146,7 +151,7 @@ export function TimelineEditor({
           </button>
         </div>
       </div>
-      {dirty && project.timeline.revision !== revision && (
+      {dirty && project.timeline.revision > revision && (
         <p role="alert">
           A newer timeline was saved elsewhere. Your draft is retained. Reload
           the saved version before replacing it.
@@ -228,108 +233,121 @@ export function TimelineEditor({
                   />
                 </label>
               </div>
-              <details className="clip-detail"><summary>Speed, sound & precise timing</summary><div className="settings-grid">
-                <label>
-                  Trim in
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.05}
-                    value={c.trim_in || 0}
-                    onChange={(e) =>
-                      clip(index, { trim_in: Number(e.target.value) })
-                    }
-                  />
-                </label>
-                <label>
-                  Trim out
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.05}
-                    value={c.trim_out}
-                    onChange={(e) =>
-                      clip(index, { trim_out: Number(e.target.value) })
-                    }
-                  />
-                </label>
-                <label>
-                  Speed
-                  <select
-                    value={c.speed || 1}
-                    onChange={(e) =>
-                      clip(index, { speed: Number(e.target.value) })
-                    }
-                  >
-                    {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4].map((s) => (
-                      <option key={s} value={s}>
-                        {s}×
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Following transition
-                  <select
-                    value={c.transition || "inherit"}
-                    onChange={(e) =>
-                      clip(index, { transition: e.target.value })
-                    }
-                  >
-                    {["inherit", "cut", "fade", "fade_black", "dissolve"].map(
-                      (t) => (
-                        <option key={t}>{t}</option>
-                      ),
-                    )}
-                  </select>
-                </label>
-                <label>
-                  Clip sound volume
-                  <input
-                    type="number"
-                    step={0.1}
-                    min={0}
-                    max={4}
-                    value={c.volume ?? 1}
-                    onChange={(e) =>
-                      clip(index, { volume: Number(e.target.value) })
-                    }
-                  />
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={!!c.mute}
-                    onChange={(e) => clip(index, { mute: e.target.checked })}
-                  />{" "}
-                  Mute
-                </label>
-                <label>
-                  Replace with take
-                  <select
-                    value={c.asset_id}
-                    onChange={(e) => {
-                      const a = scene?.assets.find(
-                        (a) => a.id === e.target.value,
-                      );
-                      clip(index, {
-                        asset_id: e.target.value,
-                        trim_in: 0,
-                        trim_out: a?.metadata.duration || 5,
-                      });
-                    }}
-                  >
-                    {scene?.assets
-                      .filter((a) => a.kind === "video")
-                      .map((a) => (
-                        <option key={a.id} value={a.id}>
-                          Clip version {(scene?.assets.filter(v=>v.kind==="video").length||0)-(scene?.assets.filter(v=>v.kind==="video").findIndex(v=>v.id===a.id)||0)} · {new Date(a.created*1000).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}
-                          {a.approved ? " · approved" : ""}
+              <details className="clip-detail">
+                <summary>Speed, sound & precise timing</summary>
+                <div className="settings-grid">
+                  <label>
+                    Trim in
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.05}
+                      value={c.trim_in || 0}
+                      onChange={(e) =>
+                        clip(index, { trim_in: Number(e.target.value) })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Trim out
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.05}
+                      value={c.trim_out}
+                      onChange={(e) =>
+                        clip(index, { trim_out: Number(e.target.value) })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Speed
+                    <select
+                      value={c.speed || 1}
+                      onChange={(e) =>
+                        clip(index, { speed: Number(e.target.value) })
+                      }
+                    >
+                      {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4].map((s) => (
+                        <option key={s} value={s}>
+                          {s}×
                         </option>
                       ))}
-                  </select>
-                </label>
-              </div></details>
+                    </select>
+                  </label>
+                  <label>
+                    Following transition
+                    <select
+                      value={c.transition || "inherit"}
+                      onChange={(e) =>
+                        clip(index, { transition: e.target.value })
+                      }
+                    >
+                      {["inherit", "cut", "fade", "fade_black", "dissolve"].map(
+                        (t) => (
+                          <option key={t}>{t}</option>
+                        ),
+                      )}
+                    </select>
+                  </label>
+                  <label>
+                    Clip sound volume
+                    <input
+                      type="number"
+                      step={0.1}
+                      min={0}
+                      max={4}
+                      value={c.volume ?? 1}
+                      onChange={(e) =>
+                        clip(index, { volume: Number(e.target.value) })
+                      }
+                    />
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={!!c.mute}
+                      onChange={(e) => clip(index, { mute: e.target.checked })}
+                    />{" "}
+                    Mute
+                  </label>
+                  <label>
+                    Replace with take
+                    <select
+                      value={c.asset_id}
+                      onChange={(e) => {
+                        const a = scene?.assets.find(
+                          (a) => a.id === e.target.value,
+                        );
+                        clip(index, {
+                          asset_id: e.target.value,
+                          trim_in: 0,
+                          trim_out: a?.metadata.duration || 5,
+                        });
+                      }}
+                    >
+                      {scene?.assets
+                        .filter((a) => a.kind === "video")
+                        .map((a) => (
+                          <option key={a.id} value={a.id}>
+                            Clip version{" "}
+                            {(scene?.assets.filter((v) => v.kind === "video")
+                              .length || 0) -
+                              (scene?.assets
+                                .filter((v) => v.kind === "video")
+                                .findIndex((v) => v.id === a.id) || 0)}{" "}
+                            ·{" "}
+                            {new Date(a.created * 1000).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                            {a.approved ? " · approved" : ""}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                </div>
+              </details>
               <div className="button-row">
                 <button
                   className="button"

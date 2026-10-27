@@ -2,7 +2,7 @@
 
 A local filmmaking studio for planning scenes, generating starting stills, animating their exact images, reviewing takes and assembling a movie. The public React interface connects to an authenticated Windows agent on your computer.
 
-**Release 0.8 — keyframes and studio care.** Adds native Wan first/last-frame control, a reversible scratch quarantine and an optional Windows tray controller to the reference-guided studio, shared timeline playback, rendered previews and reviewed Director operations.
+**Release 0.12 — guided creation and easy finishing.** Five clear steps take you through Story, Look & photos, Motion, Edit and Save video. Protected drafts survive navigation/reloads, work status and scope stay visible, scene versions are easier to choose, and finished MP4 files can be downloaded directly. [Usability release evidence](docs/USABILITY_RELEASES.md).
 
 - [Published interface](https://rorrimaesu.github.io/sceneflow-ai-studio/)
 - [Verification ledger](docs/EVIDENCE.md)
@@ -13,6 +13,10 @@ A local filmmaking studio for planning scenes, generating starting stills, anima
 The completed local proof includes an eight-scene, 26.533333-second H.264 movie: 1920×1080, 30 fps, 796 decoded frames, silent, with a fade-through-black loop boundary. Source animation was generated at 640×352 and scaled during assembly. Private movies and production data are excluded from Git.
 
 ## Open this installation
+
+Choose **Create a video**, describe your idea and select an approximate length and shape. Assisted is recommended. The local Director can propose scenes for your review; creating a project does not start photo/video generation. Follow the five project steps and use **Save video → Create finished video → Download MP4** when your edit is ready. Advanced tools remain available under Settings and each video's advanced controls.
+
+Scene, story, look, project-setting and timeline drafts remain in the browser where you edited them until saved or discarded. Finishing blocks an unapplied timeline draft. Saving applies a new revision to the local studio; active renders keep their original inputs and earlier media remains available. A full novice-user study has not yet been conducted.
 
 Open `M:\AI-Video-Studio\START_STUDIO.bat`. It starts available local services, starts or reconnects the owned agent, creates a one-use pairing code and opens the private interface. Production continues after the browser closes. `STOP_STUDIO.bat` stops this agent; saved generation jobs can reconnect on the next launch.
 

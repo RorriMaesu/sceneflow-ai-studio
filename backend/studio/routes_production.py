@@ -138,6 +138,37 @@ async def media_ticket(identifier:str,session=Depends(require_session)):
     return {'url':f'/api/media/{identifier}?ticket={value}','expires_in':1800}
 
 
+def export_asset(identifier):
+    asset=db.one("SELECT * FROM assets WHERE id=? AND kind='export'",(identifier,))
+    if not asset:raise ValueError('Choose a saved video from this project.')
+    return asset,asset_path(identifier)
+
+
+@router.post('/assets/{identifier}/download-ticket')
+async def download_ticket(identifier:str,session=Depends(require_session)):
+    asset,path=export_asset(identifier)
+    value=ticket(session,'download',identifier,ttl=1800)
+    return {'url':f'/api/downloads/{identifier}?ticket={value}'}
+
+
+@router.get('/downloads/{identifier}')
+async def download_video(identifier:str,request:Request,ticket:str=''):
+    import re
+    verify_ticket(ticket,'download',identifier,origin=request.headers.get('origin'))
+    asset,path=export_asset(identifier);title=db.project(asset['project_id'])['title']
+    name='SceneFlow-'+re.sub(r'[<>:"/\\|?*\x00-\x1f]','',title)[:80].strip(' .')+'-'+identifier[:8]+path.suffix
+    return FileResponse(path,filename=name,media_type='video/mp4',headers={'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer'})
+
+
+@router.post('/assets/{identifier}/reveal')
+async def reveal_video(identifier:str,session=Depends(require_session)):
+    import os,subprocess
+    asset,path=export_asset(identifier)
+    if os.name!='nt':raise ValueError('Show in folder is available in the local Windows studio. Download the MP4 instead.')
+    subprocess.Popen(['explorer.exe','/select,',str(path)],creationflags=0x08000000)
+    return {'shown':True}
+
+
 @router.get('/media/{identifier}')
 async def media(identifier:str,request:Request,ticket:str='',thumbnail:bool=False):
     verify_ticket(ticket,'media',identifier,origin=request.headers.get('origin'))

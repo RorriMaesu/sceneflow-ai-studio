@@ -55,7 +55,6 @@ import {
   Zap,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { z } from "zod";
 import { initialPairCode, request, upload, useConnection } from "./api";
 import type {
   Asset,
@@ -72,13 +71,16 @@ import { TimelineEditor } from "./timeline-editor";
 import { BackupPanel, WorkflowImporter, SceneHistory } from "./tools-panels";
 import { AssetQuality } from "./quality-panel";
 import { ProductionInsights } from "./production-insights";
-import {ProjectStatus} from "./project-status";
-import {useRecoverableDraft,DraftNotice} from "./recoverable-draft";
-import {DirectorProposal} from "./director-proposal";
-import {ProjectSteps,NextStep,StoryGuide,HelpPage} from "./guided-project";
-import {PAGE_NAMES,STEPS} from "./flow";
-import {NewVideoWizard} from "./new-video";
-import type {NewVideoOptions} from "./new-video";
+import { ProjectStatus } from "./project-status";
+import { useRecoverableDraft, DraftNotice } from "./recoverable-draft";
+import { DirectorProposal } from "./director-proposal";
+import { SaveVideoPage } from "./save-video";
+import { ActivityPage } from "./activity-page";
+import { FriendlySettings } from "./settings-page";
+import { ProjectSteps, NextStep, StoryGuide, HelpPage } from "./guided-project";
+import { PAGE_NAMES, STEPS } from "./flow";
+import { NewVideoWizard } from "./new-video";
+import type { NewVideoOptions } from "./new-video";
 import { MaintenancePanel } from "./maintenance-panel";
 import {
   ReadinessCoach,
@@ -97,21 +99,39 @@ const client = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
 });
 const NAV: [string, LucideIcon, string][] = [
-  ['Overview',Grid2X2,'workspace'],['Generation Queue',Activity,'workspace'],['Help',MessageCircle,'studio'],['Settings',SettingsIcon,'studio'],
+  ["Overview", Grid2X2, "workspace"],
+  ["Generation Queue", Activity, "workspace"],
+  ["Help", MessageCircle, "studio"],
+  ["Settings", SettingsIcon, "studio"],
 ];
-const SEARCH_NAV:[string,LucideIcon,string][]=[...NAV,['Storyboard',Layers,'video'],['Image Studio',ImageIcon,'video'],['Video Studio',Video,'video'],['Timeline',Film,'video'],['Exports',Download,'video'],['AI Director',Sparkles,'video'],['Model Library',Clapperboard,'studio']];
+const SEARCH_NAV: [string, LucideIcon, string][] = [
+  ...NAV,
+  ["Storyboard", Layers, "video"],
+  ["Image Studio", ImageIcon, "video"],
+  ["Video Studio", Video, "video"],
+  ["Timeline", Film, "video"],
+  ["Exports", Download, "video"],
+  ["AI Director", Sparkles, "video"],
+  ["Model Library", Clapperboard, "studio"],
+];
 const MODES: { id: Mode; name: string; description: string }[] = [
   {
     id: "automatic",
     name: "Autopilot",
-    description: "Autopilot creates your scenes and continues automatically. You can pause or review any result.",
+    description:
+      "Autopilot creates your scenes and continues automatically. You can pause or review any result.",
   },
   {
     id: "hybrid",
     name: "Assisted",
-    description: "Assisted creates your video and waits at your chosen review points.",
+    description:
+      "Assisted creates your video and waits at your chosen review points.",
   },
-  { id: "manual", name: "Manual", description: "Manual starts only the work you request." },
+  {
+    id: "manual",
+    name: "Manual",
+    description: "Manual starts only the work you request.",
+  },
 ];
 const fmt = (n: number) => (n ? `${(n / 1073741824).toFixed(1)} GB` : "—");
 const short = (s: string) =>
@@ -286,6 +306,7 @@ function Studio() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [toast, setToast] = useState("");
+  const [problem, setProblem] = useState("");
   const [busy, setBusy] = useState(false);
   const [sidebar, setSidebar] = useState(false);
   const boot = useQuery<Bootstrap>({
@@ -320,26 +341,35 @@ function Studio() {
     setToast(message);
     window.setTimeout(() => setToast(""), 5500);
   };
-  const refresh = () => {
-    cache.invalidateQueries({ queryKey: ["bootstrap"] });
-    cache.invalidateQueries({ queryKey: ["project"] });
-    cache.invalidateQueries({ queryKey: ["models"] });
+  const refresh = async () => {
+    await Promise.allSettled([
+      cache.invalidateQueries({ queryKey: ["bootstrap"] }),
+      cache.invalidateQueries({ queryKey: ["project"] }),
+      cache.invalidateQueries({ queryKey: ["models"] }),
+    ]);
   };
   useCompletionNotifications(jobs, notify);
   async function act(fn: () => Promise<any>, success = "Saved") {
     setBusy(true);
+    setProblem("");
     try {
       const value = await fn();
-      refresh();
+      await refresh();
       if (success) notify(success);
       return value;
     } catch (e) {
-      notify((e as Error).message);
+      setProblem((e as Error).message);
     } finally {
       setBusy(false);
     }
   }
   const choose = (id: string) => {
+    if (document.querySelector('[data-unprotected="true"]')) {
+      setProblem(
+        "Save or discard the current draft before leaving. This browser could not protect it.",
+      );
+      return;
+    }
     setActive(id);
     localStorage.setItem("sceneflow.project", id);
     setSelected("");
@@ -355,6 +385,7 @@ function Studio() {
         setPairOpen(false);
         setNewOpen(false);
         setSearchOpen(false);
+        setSidebar(false);
       }
     };
     window.addEventListener("keydown", handler);
@@ -423,41 +454,95 @@ function Studio() {
       socket?.close();
     };
   }, [connection.token, connection.url]);
-  async function newProject(title: string, brief: string, example = false, options?:NewVideoOptions) {
-    const created = await act(async () => {
-      let p = await request<Project>("/api/projects", {
-        title,brief:options?brief+`\nPlanning target: about ${options.length} seconds.`:brief,
-        mode:options?.mode||"hybrid",
-        settings:options?{llm:options.model,scene_count:Math.ceil(options.length/4),width:options.shape==='portrait'?256:options.shape==='square'?384:640,height:options.shape==='portrait'?448:options.shape==='square'?384:352,image_steps:20}:{},
-      });
-      choose(p.id);
-      try{
-        if(options){
-          const [width,height]=options.shape==='portrait'?[1080,1920]:options.shape==='square'?[1080,1080]:[1920,1080];
-          await request(`/api/projects/${p.id}/timeline`,{...p.timeline,settings:{...p.timeline.settings,width,height}},'PATCH');
-          if(options.reference){const imported=await upload(`/api/projects/${p.id}/references/import`,options.reference);p=await request(`/api/projects/${p.id}`,{revision:p.revision,settings:{reference_asset_ids:[imported.asset_id]}},'PATCH');}
-          if(options.plan&&options.model&&brief.trim()){await request(`/api/projects/${p.id}/plan`,{model:options.model,scene_count:Math.ceil(options.length/4),auto_apply:false,auto_continue:false});go('AI Director');}
+  async function newProject(
+    title: string,
+    brief: string,
+    example = false,
+    options?: NewVideoOptions,
+  ) {
+    const created = await act(
+      async () => {
+        let p = await request<Project>("/api/projects", {
+          title,
+          brief: options
+            ? brief + `\nPlanning target: about ${options.length} seconds.`
+            : brief,
+          mode: options?.mode || "hybrid",
+          settings: options
+            ? {
+                llm: options.model,
+                video_shape: options.shape,
+                scene_count: Math.ceil(options.length / 4),
+                width:
+                  options.shape === "portrait"
+                    ? 256
+                    : options.shape === "square"
+                      ? 384
+                      : 640,
+                height:
+                  options.shape === "portrait"
+                    ? 448
+                    : options.shape === "square"
+                      ? 384
+                      : 352,
+                image_steps: 20,
+              }
+            : {},
+        });
+        choose(p.id);
+        try {
+          if (options) {
+            if (options.reference) {
+              const imported = await upload(
+                `/api/projects/${p.id}/references/import`,
+                options.reference,
+              );
+              p = await request(
+                `/api/projects/${p.id}`,
+                {
+                  revision: p.revision,
+                  settings: { reference_asset_ids: [imported.asset_id] },
+                },
+                "PATCH",
+              );
+            }
+            if (options.plan && options.model && brief.trim()) {
+              await request(`/api/projects/${p.id}/plan`, {
+                model: options.model,
+                scene_count: Math.ceil(options.length / 4),
+                auto_apply: false,
+                auto_continue: false,
+              });
+              go("AI Director");
+            }
+          }
+        } catch (error) {
+          notify(
+            "Your video was created. Setup needs attention: " +
+              (error as Error).message,
+          );
         }
-      }catch(error){notify('Your video was created. Setup needs attention: '+(error as Error).message);}
 
-      if (example) {
-        for (const [name, description] of EXAMPLE) {
-          await request(`/api/projects/${p.id}/scenes`, {
-            title: name,
-            body: {
-              summary: description,
-              image_prompt: `A polished two-dimensional cartoon Halloween starting frame. ${description}. Dark theatrical background, clean bold outlines, expressive composition, space around the character. No text.`,
-              video_prompt: `Preserve the exact starting artwork and character design. ${description}. Subtle breathing, one clear readable motion, candlelight flicker. Locked camera, no cuts.`,
-              duration: 5,
-            },
-          });
+        if (example) {
+          for (const [name, description] of EXAMPLE) {
+            await request(`/api/projects/${p.id}/scenes`, {
+              title: name,
+              body: {
+                summary: description,
+                image_prompt: `A polished two-dimensional cartoon Halloween starting frame. ${description}. Dark theatrical background, clean bold outlines, expressive composition, space around the character. No text.`,
+                video_prompt: `Preserve the exact starting artwork and character design. ${description}. Subtle breathing, one clear readable motion, candlelight flicker. Locked camera, no cuts.`,
+                duration: 5,
+              },
+            });
+          }
         }
-      }
-      return p;
-    }, options ? "" : "Project created");
+        return p;
+      },
+      options ? "" : "Project created",
+    );
     if (created) {
-      if(!options)choose(created.id);
-      if(!options)setNewOpen(false);
+      if (!options) choose(created.id);
+      if (!options) setNewOpen(false);
     }
     return created;
   }
@@ -512,14 +597,48 @@ function Studio() {
         : "Jobs added to the production queue.",
     );
   }
-  useEffect(()=>{window.scrollTo(0,0);const heading=document.querySelector<HTMLElement>("main h1, main h2");if(heading){heading.tabIndex=-1;heading.focus({preventScroll:true});}},[page,active]);
-  useEffect(()=>{if(scene&&["Storyboard","Image Studio","Video Studio"].includes(page))requestAnimationFrame(()=>document.querySelector(".scene-editor")?.scrollIntoView({block:"start"}));},[scene?.id,page]);
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    const heading = document.querySelector<HTMLElement>("main h1, main h2");
+    if (heading) {
+      heading.tabIndex = -1;
+      heading.focus({ preventScroll: true });
+    }
+  }, [page, active]);
+  useEffect(() => {
+    if (scene && ["Storyboard", "Image Studio", "Video Studio"].includes(page))
+      requestAnimationFrame(() =>
+        document
+          .querySelector(".scene-editor")
+          ?.scrollIntoView({ block: "start" }),
+      );
+  }, [scene?.id, page]);
+  useEffect(() => {
+    if (problem && !newOpen && !pairOpen) {
+      const banner = document.querySelector<HTMLElement>(".problem-banner");
+      banner?.scrollIntoView({ block: "start" });
+      banner?.focus();
+    }
+  }, [problem, newOpen, pairOpen]);
   const go = (next: string) => {
+    if (document.querySelector('[data-unprotected="true"]')) {
+      setProblem(
+        "Save or discard the current draft before leaving. This browser could not protect it.",
+      );
+      return;
+    }
     setPage(next);
     setSidebar(false);
   };
   return (
-    <div className={"app-shell"+(scene&&["Storyboard","Image Studio","Video Studio"].includes(page)?" scene-open":"")}>
+    <div
+      className={
+        "app-shell" +
+        (scene && ["Storyboard", "Image Studio", "Video Studio"].includes(page)
+          ? " scene-open"
+          : "")
+      }
+    >
       <aside className={`sidebar ${sidebar ? "open" : ""}`}>
         <a
           className="brand"
@@ -536,30 +655,37 @@ function Studio() {
             SceneFlow<span className="brand-sub">AI STUDIO</span>
           </span>
         </a>
-        <div className="workspace-label">
-          YOUR LOCAL STUDIO
-        </div>
-        <button className="button primary sidebar-create" onClick={()=>connection.token?setNewOpen(true):setPairOpen(true)}>+ Create a video</button>
+        <div className="workspace-label">YOUR LOCAL STUDIO</div>
+        <button
+          className="button primary sidebar-create"
+          onClick={() =>
+            connection.token ? setNewOpen(true) : setPairOpen(true)
+          }
+        >
+          + Create a video
+        </button>
         <nav>
-          {["workspace", "production", "studio"].filter(group=>NAV.some(n=>n[2]===group)).map((group) => (
-            <React.Fragment key={group}>
-              <div className="nav-label">{group}</div>
-              {NAV.filter((n) => n[2] === group).map(([label, Icon]) => (
-                <button
-                  key={label}
-                  onClick={() => go(label)}
-                  className={`nav-item ${page === label ? "active" : ""}`}
-                  aria-current={page===label?"page":undefined}
-                >
-                  <Icon size={18} />
-                  <span>{PAGE_NAMES[label]||label}</span>
-                  {label === "Generation Queue" && pending.length > 0 && (
-                    <small>{pending.length}</small>
-                  )}
-                </button>
-              ))}
-            </React.Fragment>
-          ))}
+          {["workspace", "production", "studio"]
+            .filter((group) => NAV.some((n) => n[2] === group))
+            .map((group) => (
+              <React.Fragment key={group}>
+                <div className="nav-label">{group}</div>
+                {NAV.filter((n) => n[2] === group).map(([label, Icon]) => (
+                  <button
+                    key={label}
+                    onClick={() => go(label)}
+                    className={`nav-item ${page === label ? "active" : ""}`}
+                    aria-current={page === label ? "page" : undefined}
+                  >
+                    <Icon size={18} />
+                    <span>{PAGE_NAMES[label] || label}</span>
+                    {label === "Generation Queue" && pending.length > 0 && (
+                      <small>{pending.length}</small>
+                    )}
+                  </button>
+                ))}
+              </React.Fragment>
+            ))}
         </nav>
         <div className="sidebar-bottom">
           <div className="local-card">
@@ -585,13 +711,13 @@ function Studio() {
             <button
               className="icon-button mobile-menu"
               onClick={() => setSidebar(!sidebar)}
-              aria-label="Open navigation"
+              aria-label={sidebar?'Close navigation':'Open navigation'}
             >
               <Menu size={20} />
             </button>
             <span>Workspace</span>
             <ChevronRight size={14} />
-            <strong>{PAGE_NAMES[page]||page}</strong>
+            <strong>{PAGE_NAMES[page] || page}</strong>
           </div>
           <div className="top-actions">
             <button
@@ -615,6 +741,23 @@ function Studio() {
           </div>
         </header>
         <main>
+          {problem && (
+            <div className="problem-banner" role="alert" tabIndex={-1}>
+              <strong>This action needs attention</strong>
+              <details>
+                <summary>Show the problem</summary>
+                <p>{problem}</p>
+              </details>
+              <div className="button-row">
+                <button className="button" onClick={() => setProblem("")}>
+                  Dismiss
+                </button>
+                <button className="button" onClick={() => go("Help")}>
+                  Help
+                </button>
+              </div>
+            </div>
+          )}
           <AnimatePresence mode="wait">
             <motion.div
               key={page + (!project ? "" : active)}
@@ -676,7 +819,7 @@ function Studio() {
                           <Plus size={17} />
                           Create a video
                         </Button>
-                        <Button onClick={()=>go('Help')}>How it works</Button>
+                        <Button onClick={() => go("Help")}>How it works</Button>
                       </div>
                     </div>
                     <div className="hero-art" aria-hidden="true">
@@ -711,8 +854,7 @@ function Studio() {
                     <div className="section-heading">
                       <div>
                         <h2>
-                          My videos{" "}
-                          <span>{data?.projects.length || 0}</span>
+                          My videos <span>{data?.projects.length || 0}</span>
                         </h2>
                         <p>Every great story starts somewhere.</p>
                       </div>
@@ -900,10 +1042,18 @@ function Studio() {
                     </div>
                   </section>
                 </>
-              ) : page === 'Help' ? <HelpPage go={go}/> : page === 'Generation Queue' ? (
-                <ActivityView projects={data?.projects||[]} jobs={jobs} act={act} active={active} choose={choose}/>
+              ) : page === "Help" ? (
+                <HelpPage go={go} />
+              ) : page === "Generation Queue" ? (
+                <ActivityPage
+                  projects={data?.projects || []}
+                  jobs={jobs}
+                  act={act}
+                  active={active}
+                  choose={choose}
+                />
               ) : page === "Settings" ? (
-                <SettingsPage
+                <FriendlySettings
                   project={project}
                   data={data}
                   act={act}
@@ -954,7 +1104,7 @@ function Studio() {
                           title={m.description}
                           key={m.id}
                           className={project.mode === m.id ? "selected" : ""}
-                          aria-pressed={project.mode===m.id}
+                          aria-pressed={project.mode === m.id}
                           onClick={() => modeChange(m.id)}
                         >
                           {m.id === "automatic" ? (
@@ -969,12 +1119,44 @@ function Studio() {
                       ))}
                     </div>
                   </div>
-                  <ProjectStatus project={project} jobs={jobs} act={act}/>
-                  <ProjectSteps project={project} page={page} go={go}/>
-                  <NextStep project={project} jobs={jobs} page={page} go={go} act={act} busy={busy}/>
-                  {page==='Storyboard'&&<StoryGuide project={project} go={go}/>}
-                  {page==='Image Studio'&&<VisualBible key={project.id} project={project} act={act} renderMedia={a=><Media asset={a}/>}/>}
-                  <details className="project-advanced"><summary>Video settings & advanced controls</summary><p>{MODES.find(m=>m.id===project.mode)?.description} Sound can be added in Edit. AI quality checking is {project.settings.qa_enabled?'on':'off'}.</p><ProductionSettings key={project.id} project={project} workflows={models.data||[]} models={data?.services.ollama.models||[]} act={act}/><ProductionInsights project={project}/><BackupPanel project={project} act={act}/></details>
+                  <ProjectStatus project={project} jobs={jobs} act={act} />
+                  <ProjectSteps project={project} page={page} go={go} />
+                  <NextStep
+                    project={project}
+                    jobs={jobs}
+                    page={page}
+                    go={go}
+                    act={act}
+                    busy={busy}
+                  />
+                  {page === "Storyboard" && (
+                    <StoryGuide project={project} go={go} act={act} />
+                  )}
+                  {page === "Image Studio" && (
+                    <VisualBible
+                      key={project.id}
+                      project={project}
+                      act={act}
+                      renderMedia={(a) => <Media asset={a} />}
+                    />
+                  )}
+                  <details className="project-advanced">
+                    <summary>Video settings & advanced controls</summary>
+                    <p>
+                      {MODES.find((m) => m.id === project.mode)?.description}{" "}
+                      Sound can be added in Edit. AI quality checking is{" "}
+                      {project.settings.qa_enabled ? "on" : "off"}.
+                    </p>
+                    <ProductionSettings
+                      key={project.id}
+                      project={project}
+                      workflows={models.data || []}
+                      models={data?.services.ollama.models || []}
+                      act={act}
+                    />
+                    <ProductionInsights project={project} />
+                    <BackupPanel project={project} act={act} />
+                  </details>
                   {["Storyboard", "Image Studio", "Video Studio"].includes(
                     page,
                   ) ? (
@@ -985,12 +1167,16 @@ function Studio() {
                         <div className="section-heading compact">
                           <div>
                             <h2>
-                              {scene ? "Scenes" : page === "Storyboard" ? "Your scenes" : PAGE_NAMES[page]}
+                              {scene
+                                ? "Scenes"
+                                : page === "Storyboard"
+                                  ? "Your scenes"
+                                  : PAGE_NAMES[page]}
                             </h2>
                             <p>
                               {page === "Storyboard"
                                 ? "Shape the story. Refine every frame."
-                                : "Generate, compare, and select the takes that tell your story."}
+                                : "Create photos or clips, compare their versions, and choose what to use."}
                             </p>
                           </div>
                           <Button
@@ -1091,22 +1277,35 @@ function Studio() {
                                           : video
                                             ? s.selected_video_id &&
                                               s.video_current === false
-                                              ? "Video outdated"
+                                              ? "Clip needs updating"
                                               : video.approved
-                                                ? "Video ready"
-                                                : "Review video"
+                                                ? "Clip ready"
+                                                : "Review clip"
                                             : image
                                               ? s.selected_image_id &&
                                                 s.image_current === false
-                                                ? "Still outdated"
+                                                ? "Photo needs updating"
                                                 : image.approved
-                                                  ? "Still ready"
-                                                  : "Choose a still"
+                                                  ? "Photo ready"
+                                                  : "Choose a photo"
                                               : job
                                                 ? short(job.status)
                                                 : "Not started"}
                                       </Badge>
-                                      <span>{s.assets.filter(a=>a.kind==="image").length} photos · {s.assets.filter(a=>a.kind==="video").length} clips</span>
+                                      <span>
+                                        {
+                                          s.assets.filter(
+                                            (a) => a.kind === "image",
+                                          ).length
+                                        }{" "}
+                                        photos ·{" "}
+                                        {
+                                          s.assets.filter(
+                                            (a) => a.kind === "video",
+                                          ).length
+                                        }{" "}
+                                        clips
+                                      </span>
                                     </div>
                                   </div>
                                 </button>
@@ -1132,21 +1331,21 @@ function Studio() {
                           scene={scene}
                           project={project}
                           workflows={models.data || []}
-                          view={page==="Image Studio"?"image":page==="Video Studio"?"video":"story"}
+                          view={
+                            page === "Image Studio"
+                              ? "image"
+                              : page === "Video Studio"
+                                ? "video"
+                                : "story"
+                          }
                           busy={busy}
-                          askDirector={()=>go("AI Director")}
+                          askDirector={() => go("AI Director")}
                           act={act}
                           produce={produce}
                           close={() => setSelected("")}
                         />
                       )}
                     </div>
-                  ) : page === "Generation Queue" ? (
-                    <QueuePage
-                      jobs={jobs.filter((j) => j.project_id === active)}
-                      act={act}
-                      project={project}
-                    />
                   ) : page === "AI Director" ? (
                     <DirectorPage
                       project={project}
@@ -1162,12 +1361,14 @@ function Studio() {
                       renderMedia={(a) => <Media asset={a} controls />}
                     />
                   ) : page === "Exports" ? (
-                    <ExportsPage
-                      assets={(data?.assets || []).filter(
-                        (a) => a.project_id === active && a.kind === "export",
-                      )}
+                    <SaveVideoPage
+                      key={project.id}
+                      busy={busy}
                       project={project}
+                      jobs={jobs}
                       act={act}
+                      go={go}
+                      renderMedia={(a) => <Media asset={a} controls />}
                     />
                   ) : null}
                 </>
@@ -1211,7 +1412,12 @@ function Studio() {
         />
       )}
       {newOpen && (
-        <NewVideoWizard close={()=>setNewOpen(false)} create={v=>newProject(v.title,v.brief,false,v)} busy={busy} models={data?.services.ollama.models||[]}/>
+        <NewVideoWizard
+          close={() => setNewOpen(false)}
+          create={(v) => newProject(v.title, v.brief, false, v)}
+          busy={busy}
+          models={data?.services.ollama.models || []}
+        />
       )}
       {searchOpen && (
         <div className="modal-backdrop" onClick={() => setSearchOpen(false)}>
@@ -1250,7 +1456,9 @@ function Studio() {
                 </button>
               ))}
             {SEARCH_NAV.filter((n) =>
-              (PAGE_NAMES[n[0]]||n[0]).toLowerCase().includes(search.toLowerCase()),
+              (PAGE_NAMES[n[0]] || n[0])
+                .toLowerCase()
+                .includes(search.toLowerCase()),
             ).map(([name, Icon]) => (
               <button
                 key={name}
@@ -1260,7 +1468,7 @@ function Studio() {
                 }}
               >
                 <Icon size={17} />
-                {PAGE_NAMES[name]||name}
+                {PAGE_NAMES[name] || name}
                 <ArrowRight size={14} />
               </button>
             ))}
@@ -1406,99 +1614,16 @@ function PairDialog({
     </div>
   );
 }
-function ProjectDialog({
-  close,
-  create,
-  busy,
-}: {
-  close: () => void;
-  create: (title: string, brief: string) => void;
-  busy: boolean;
-}) {
-  const [title, setTitle] = useState("");
-  const [brief, setBrief] = useState("");
-  const [error, setError] = useState("");
-  return (
-    <div className="modal-backdrop">
-      <section
-        className="modal wide"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="new-title"
-      >
-        <button
-          className="modal-close"
-          aria-label="Close new project"
-          onClick={close}
-        >
-          <X size={19} />
-        </button>
-        <div className="modal-symbol">
-          <Clapperboard size={25} />
-        </div>
-        <span className="eyebrow">A NEW PRODUCTION</span>
-        <h2 id="new-title">Every story starts with a spark.</h2>
-        <p>
-          Name your project and tell us what you have in mind. You can refine
-          everything as you go.
-        </p>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            const parsed = z
-              .object({
-                title: z.string().trim().min(1).max(160),
-                brief: z.string().max(30000),
-              })
-              .safeParse({ title, brief });
-            if (!parsed.success) {
-              setError("Give your production a title, up to 160 characters.");
-              return;
-            }
-            create(parsed.data.title, brief);
-          }}
-        >
-          <label>
-            Project title
-            <input
-              autoFocus
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="A story worth telling"
-              required
-            />
-          </label>
-          <label>
-            Your creative brief
-            <textarea
-              value={brief}
-              onChange={(e) => setBrief(e.target.value)}
-              placeholder="A moody short film, a Halloween window projection, an idea you can’t stop thinking about…"
-              rows={5}
-            />
-          </label>
-          <div className="form-note">
-            <WandSparkles size={15} /> Starts in Assisted mode. You can take
-            full control at any time.
-          </div>
-          {error && <div className="inline-error">{error}</div>}
-          <Button type="submit" primary disabled={busy}>
-            <Plus size={17} />
-            Create production
-          </Button>
-        </form>
-      </section>
-    </div>
-  );
-}
-
 function SceneInspector({
   scene,
   project,
   workflows,
   act,
   produce,
-  close,view,busy,askDirector,
+  close,
+  view,
+  busy,
+  askDirector,
 }: {
   scene: Scene;
   project: Project;
@@ -1506,20 +1631,57 @@ function SceneInspector({
   act: any;
   produce: (s: string) => void;
   close: () => void;
-  view:"story"|"image"|"video";busy:boolean;askDirector:()=>void;
+  view: "story" | "image" | "video";
+  busy: boolean;
+  askDirector: () => void;
 }) {
-  const legacyKey='sceneflow.draft.'+scene.id;
-  const draft=useRecoverableDraft('scene.'+scene.id,{title:scene.title,body:scene.body},scene.revision,v=>typeof v?.title==='string'&&!!v?.body,()=>{
-    try{const old=JSON.parse(localStorage.getItem(legacyKey)||'null');return old&&Number.isInteger(old.revision)?{value:{title:old.title,body:old.body},revision:old.revision}:null}catch{return null}
-  });
-  const {title,body}=draft.value;const dirty=draft.dirty,baseRevision=draft.revision;
-  const setTitle=(title:string)=>draft.setValue(v=>({...v,title}));
-  const setBody=(body:Record<string,any>)=>draft.setValue(v=>({...v,body}));
-  const change=(key:string,value:any)=>setBody({...body,[key]:value});
-  const [tab,setTab]=useState(view==='story'?'Direction':'Takes');
-  const versions=scene.assets.filter(a=>(view==='story'?['image','video'].includes(a.kind):a.kind===view)&&a.metadata.role!=='edit_mask');
-  const selectedVideo=scene.assets.find(a=>a.id===scene.selected_video_id);
-  useEffect(()=>{try{if(!dirty||localStorage.getItem('sceneflow.safe-draft.scene.'+scene.id))localStorage.removeItem(legacyKey)}catch{}},[dirty,body,title]);
+  const legacyKey = "sceneflow.draft." + scene.id;
+  const draft = useRecoverableDraft(
+    "scene." + scene.id,
+    { title: scene.title, body: scene.body },
+    scene.revision,
+    (v) => typeof v?.title === "string" && !!v?.body,
+    () => {
+      try {
+        const old = JSON.parse(localStorage.getItem(legacyKey) || "null");
+        return old && Number.isInteger(old.revision)
+          ? {
+              value: { title: old.title, body: old.body },
+              revision: old.revision,
+            }
+          : null;
+      } catch {
+        return null;
+      }
+    },
+  );
+  const { title, body } = draft.value;
+  const dirty = draft.dirty,
+    baseRevision = draft.revision;
+  const setTitle = (title: string) => draft.setValue((v) => ({ ...v, title }));
+  const setBody = (body: Record<string, any>) =>
+    draft.setValue((v) => ({ ...v, body }));
+  const change = (key: string, value: any) =>
+    setBody({ ...body, [key]: value });
+  const [tab, setTab] = useState(view === "story" ? "Direction" : "Takes");
+  const versions = scene.assets.filter(
+    (a) =>
+      (view === "story"
+        ? ["image", "video"].includes(a.kind)
+        : a.kind === view) && a.metadata.role !== "edit_mask",
+  );
+  const selectedVideo = scene.assets.find(
+    (a) => a.id === scene.selected_video_id,
+  );
+  useEffect(() => {
+    try {
+      if (
+        !dirty ||
+        localStorage.getItem("sceneflow.safe-draft.scene." + scene.id)
+      )
+        localStorage.removeItem(legacyKey);
+    } catch {}
+  }, [dirty, body, title]);
   const selectedImage = scene.assets.find(
     (a) => a.id === scene.selected_image_id,
   );
@@ -1541,18 +1703,75 @@ function SceneInspector({
         {["Direction", "Takes", "Settings", "History"].map((t) => (
           <button
             key={t}
-            role="tab" aria-selected={tab===t} tabIndex={tab===t?0:-1} aria-controls={"scene-panel-"+scene.id} id={"scene-tab-"+scene.id+t}
-            onKeyDown={e=>{const names=["Direction","Takes","Settings","History"];const index=names.indexOf(t);const next=e.key==="ArrowRight"?(index+1)%4:e.key==="ArrowLeft"?(index+3)%4:e.key==="Home"?0:e.key==="End"?3:-1;if(next>=0){e.preventDefault();setTab(names[next]);(e.currentTarget.parentElement?.querySelectorAll<HTMLElement>("[role=tab]")[next])?.focus()}}}
+            role="tab"
+            aria-selected={tab === t}
+            tabIndex={tab === t ? 0 : -1}
+            aria-controls={"scene-panel-" + scene.id}
+            id={"scene-tab-" + scene.id + t}
+            onKeyDown={(e) => {
+              const names = ["Direction", "Takes", "Settings", "History"];
+              const index = names.indexOf(t);
+              const next =
+                e.key === "ArrowRight"
+                  ? (index + 1) % 4
+                  : e.key === "ArrowLeft"
+                    ? (index + 3) % 4
+                    : e.key === "Home"
+                      ? 0
+                      : e.key === "End"
+                        ? 3
+                        : -1;
+              if (next >= 0) {
+                e.preventDefault();
+                setTab(names[next]);
+                e.currentTarget.parentElement
+                  ?.querySelectorAll<HTMLElement>("[role=tab]")
+                  [next]?.focus();
+              }
+            }}
             className={tab === t ? "selected" : ""}
             onClick={() => setTab(t)}
           >
-            {{Direction:"Describe",Takes:"Versions",Settings:"Advanced",History:"History"}[t]}
+            {
+              {
+                Direction: "Describe",
+                Takes: "Versions",
+                Settings: "Advanced",
+                History: "History",
+              }[t]
+            }
           </button>
         ))}
       </div>
-      <div className="scene-current-preview"><p>{view==='video'&&selectedVideo?'Clip currently in use':'Starting photo currently in use'}</p>{view==='video'&&selectedVideo?<Media asset={selectedVideo} controls/>:selectedImage?<Media asset={selectedImage} controls/>:<p className="media-placeholder">Create or import a starting photo, then choose it for this scene.</p>}<p className="muted">Earlier versions remain available. You can change your choice.</p><button className="button" onClick={askDirector}>Ask the Director about this scene</button></div>
-      <div className="inspector-content" role="tabpanel" id={'scene-panel-'+scene.id} aria-labelledby={'scene-tab-'+scene.id+tab}>
-      <DraftNotice draft={draft}/>
+      <div className="scene-current-preview">
+        <p>
+          {view === "video" && selectedVideo
+            ? "Clip currently in use"
+            : "Starting photo currently in use"}
+        </p>
+        {view === "video" && selectedVideo ? (
+          <Media asset={selectedVideo} controls />
+        ) : selectedImage ? (
+          <Media asset={selectedImage} controls />
+        ) : (
+          <p className="media-placeholder">
+            Create or import a starting photo, then choose it for this scene.
+          </p>
+        )}
+        <p className="muted">
+          Earlier versions remain available. You can change your choice.
+        </p>
+        <button className="button" onClick={askDirector}>
+          Ask the Director about this scene
+        </button>
+      </div>
+      <div
+        className="inspector-content"
+        role="tabpanel"
+        id={"scene-panel-" + scene.id}
+        aria-labelledby={"scene-tab-" + scene.id + tab}
+      >
+        <DraftNotice draft={draft} />
         {tab === "Direction" ? (
           <>
             <label>
@@ -1618,7 +1837,7 @@ function SceneInspector({
             )}
             <Button
               primary
-              disabled={!dirty||draft.conflict||busy}
+              disabled={!dirty || draft.conflict || busy}
               onClick={() =>
                 act(async () => {
                   const result = await request(
@@ -1626,7 +1845,10 @@ function SceneInspector({
                     { revision: baseRevision, title, body },
                     "PATCH",
                   );
-                  draft.adopt({title:result.title,body:result.body},result.revision);
+                  draft.adopt(
+                    { title: result.title, body: result.body },
+                    result.revision,
+                  );
                   return result;
                 }, "New scene revision saved. Active jobs keep their original settings.")
               }
@@ -1701,7 +1923,7 @@ function SceneInspector({
             />
             <Button
               primary
-              disabled={!dirty||draft.conflict||busy}
+              disabled={!dirty || draft.conflict || busy}
               onClick={() =>
                 act(async () => {
                   const result = await request(
@@ -1709,7 +1931,10 @@ function SceneInspector({
                     { revision: baseRevision, body },
                     "PATCH",
                   );
-                  draft.adopt({title:result.title,body:result.body},result.revision);
+                  draft.adopt(
+                    { title: result.title, body: result.body },
+                    result.revision,
+                  );
                   return result;
                 }, "Settings saved as a new revision.")
               }
@@ -1725,15 +1950,24 @@ function SceneInspector({
           <SceneHistory scene={scene} act={act} />
         ) : (
           <>
-            {view!=="video"&&<CandidateReview
-              scene={scene}
-              project={project}
-              act={act}
-              renderMedia={(a) => <Media asset={a} controls />}
-            />}
+            {view !== "video" && (
+              <CandidateReview
+                scene={scene}
+                project={project}
+                act={act}
+                renderMedia={(a) => <Media asset={a} controls />}
+              />
+            )}
             {versions.length ? (
-              versions.map((a,index) => (
-                <div className="take" key={a.id}><h3>{a.kind==="image"?"Photo":"Clip"} version {versions.length-index}</h3>{[scene.selected_image_id,scene.selected_video_id].includes(a.id)&&<Badge tone="green">Used in this scene</Badge>}
+              versions.map((a, index) => (
+                <div className="take" key={a.id}>
+                  <h3>
+                    {a.kind === "image" ? "Photo" : "Clip"} version{" "}
+                    {versions.length - index}
+                  </h3>
+                  {[scene.selected_image_id, scene.selected_video_id].includes(
+                    a.id,
+                  ) && <Badge tone="green">Used in this scene</Badge>}
                   <Media asset={a} controls />
                   {a.kind === "image" && (
                     <CorrectionCanvas
@@ -1752,10 +1986,44 @@ function SceneInspector({
                   </div>
                   <p>Created {new Date(a.created * 1000).toLocaleString()}</p>
                   {featurePhase >= 5 && ["image", "video"].includes(a.kind) && (
-                    <details className="quality-details"><summary>Optional AI check & video samples</summary><AssetQuality asset={a} project={project} act={act} /></details>
+                    <details className="quality-details">
+                      <summary>Optional AI check & video samples</summary>
+                      <AssetQuality asset={a} project={project} act={act} />
+                    </details>
                   )}
-                  <div className="button-row"><Button primary disabled={busy||!!a.approved&&[scene.selected_image_id,scene.selected_video_id].includes(a.id)} onClick={()=>act(()=>request(`/api/assets/${a.id}/approve`,{}),'Chosen version saved for this scene.')}><Check size={16}/>{[scene.selected_image_id,scene.selected_video_id].includes(a.id)&&a.approved?'In use':a.kind==='image'?'Use this photo':'Use this clip'}</Button></div><p className="muted">Choosing a version approves it for this scene. Any next automatic task follows your production mode and pause state.</p>
-
+                  <div className="button-row">
+                    <Button
+                      primary
+                      disabled={
+                        busy ||
+                        (!!a.approved &&
+                          [
+                            scene.selected_image_id,
+                            scene.selected_video_id,
+                          ].includes(a.id))
+                      }
+                      onClick={() =>
+                        act(
+                          () => request(`/api/assets/${a.id}/approve`, {}),
+                          "Chosen version saved for this scene.",
+                        )
+                      }
+                    >
+                      <Check size={16} />
+                      {[
+                        scene.selected_image_id,
+                        scene.selected_video_id,
+                      ].includes(a.id) && a.approved
+                        ? "In use"
+                        : a.kind === "image"
+                          ? "Use this photo"
+                          : "Use this clip"}
+                    </Button>
+                  </div>
+                  <p className="muted">
+                    Choosing a version approves it for this scene. Any next
+                    automatic task follows your production mode and pause state.
+                  </p>
                 </div>
               ))
             ) : (
@@ -1768,7 +2036,12 @@ function SceneInspector({
           </>
         )}
       </div>
-      <div className="inspector-footer"><p>{dirty?"Save or discard your draft before creating a new version.":"Create another version only for this scene. Existing versions stay available."}</p>
+      <div className="inspector-footer">
+        <p>
+          {dirty
+            ? "Save or discard your draft before creating a new version."
+            : "Create another version only for this scene. Existing versions stay available."}
+        </p>
         <div className="button-row">
           <Button
             onClick={() => produce("selected_still")}
@@ -1830,199 +2103,6 @@ function SceneInspector({
   );
 }
 
-function ActivityView({projects,jobs,act,active,choose}:{projects:Project[];jobs:Job[];act:any;active:string;choose:(id:string)=>void}){
-  const [scope,setScope]=useState('all');const selected=projects.find(p=>p.id===scope);
-  return <><label className="activity-scope">Show activity for<select value={scope} onChange={e=>setScope(e.target.value)}><option value="all">All my videos</option>{projects.map(p=><option value={p.id} key={p.id}>{p.title}</option>)}</select></label>{selected&&<button className="button" onClick={()=>choose(selected.id)}>Open {selected.title}</button>}<QueuePage jobs={scope==='all'?jobs:jobs.filter(j=>j.project_id===scope)} act={act} project={selected||projects.find(p=>p.id===active)||projects[0]}/></>
-}
-function QueuePage({
-  jobs,
-  project,
-  act,
-}: {
-  jobs: Job[];
-  project: Project;
-  act: any;
-}) {
-  const [reviewed, setReviewed] = useState<Record<string, boolean>>({});
-  return (
-    <section className="panel">
-      <div className="section-heading">
-        <div>
-          <h2>Activity</h2>
-          <p>See what is working, waiting, or ready for review.</p>
-        </div>
-
-      </div>
-      {jobs.length ? (
-        jobs.map((j) => (
-          <div className="queue-row" key={j.id}>
-            <div
-              className={`job-symbol ${j.status === "running" ? "glowing" : ""}`}
-            >
-              {j.kind === "image" ? (
-                <ImageIcon size={19} />
-              ) : j.kind === "video" ? (
-                <Video size={19} />
-              ) : (
-                <Film size={19} />
-              )}
-            </div>
-            <div className="queue-info">
-              <strong>
-                {j.snapshot.scene_title || j.snapshot.title || short(j.kind)}
-              </strong>
-              <span>
-                {short(j.kind)} · {j.id.slice(0, 8)}
-              </span>
-              {j.error && <p className="error-text">{j.error}</p>}
-            </div>
-            <Badge
-              tone={
-                j.status === "completed"
-                  ? "green"
-                  : j.status === "failed"
-                    ? "red"
-                    : j.status === "running"
-                      ? "violet"
-                      : ""
-              }
-            >
-              {short(j.status)}
-            </Badge>
-            <div className="job-progress">
-              <div className="meter">
-                <span style={{ width: `${j.progress * 100}%` }} />
-              </div>
-              <span>
-                {["image", "video"].includes(j.kind) && j.status !== "completed"
-                  ? "Stage "
-                  : ""}
-                {Math.round(j.progress * 100)}%
-              </span>
-            </div>
-            <Button
-              onClick={() =>
-                act(
-                  () => request(`/api/jobs/${j.id}/retry`, {}),
-                  "A new attempt was queued.",
-                )
-              }
-              disabled={!["failed", "cancelled"].includes(j.status)}
-              title="Retry with a new attempt"
-            >
-              <RefreshCw size={14} />
-            </Button>
-            {j.status === "queued" && (
-              <>
-                <Button
-                  title="Move to front of pending work"
-                  onClick={() =>
-                    act(
-                      () =>
-                        request(`/api/jobs/${j.id}/priority`, { priority: 80 }),
-                      "Pending job prioritized.",
-                    )
-                  }
-                >
-                  <ArrowUp size={14} />
-                </Button>
-                <Button
-                  title="Cancel pending job"
-                  onClick={() =>
-                    act(
-                      () => request(`/api/jobs/${j.id}/cancel`, {}),
-                      "Pending job cancelled.",
-                    )
-                  }
-                >
-                  <X size={14} />
-                </Button>
-              </>
-            )}
-            {["submitted", "reconciling"].includes(j.status) &&
-              ["image", "video"].includes(j.kind) && (
-                <Button
-                  title="Cancel only this Studio-owned render"
-                  onClick={() =>
-                    act(
-                      () => request(`/api/jobs/${j.id}/cancel`, {}),
-                      "Targeted cancellation requested. Earlier takes are preserved.",
-                    )
-                  }
-                >
-                  Stop this render
-                </Button>
-              )}
-            {j.status === "needs_attention" && (
-              <details>
-                <summary>Review before retrying</summary>
-                <p>
-                  Check the original job and its outputs. A retry creates a new
-                  attempt with these saved inputs.
-                </p>
-                <p>Backend prompt: {j.comfy_prompt_id || "not confirmed"}</p>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={!!reviewed[j.id]}
-                    onChange={(e) =>
-                      setReviewed((v) => ({ ...v, [j.id]: e.target.checked }))
-                    }
-                  />{" "}
-                  I reviewed the original result.
-                </label>
-                <Button
-                  disabled={!reviewed[j.id]}
-                  onClick={() =>
-                    act(
-                      () =>
-                        request(`/api/jobs/${j.id}/retry`, {
-                          confirm_uncertain: true,
-                        }),
-                      "A new reviewed attempt was queued.",
-                    )
-                  }
-                >
-                  Retry reviewed attempt
-                </Button>
-              </details>
-            )}
-            <details>
-              <summary>Saved inputs</summary>
-              <pre
-                style={{
-                  maxWidth: 300,
-                  maxHeight: 240,
-                  overflow: "auto",
-                  whiteSpace: "pre-wrap",
-                }}
-              >
-                {JSON.stringify(
-                  {
-                    scene: j.snapshot.scene_id,
-                    revision: j.snapshot.scene_revision,
-                    prompt: j.snapshot.positive_prompt,
-                    source: j.snapshot.source_asset_id,
-                    seed: j.snapshot.seed,
-                    workflow: j.snapshot.workflow_id,
-                  },
-                  null,
-                  2,
-                )}
-              </pre>
-            </details>
-          </div>
-        ))
-      ) : (
-        <Empty
-          icon={Activity}
-          title="A quiet moment in the studio"
-          description="Generation jobs appear here when you create stills, animate scenes, or export a movie."
-        />
-      )}
-    </section>
-  );
-}
 function DirectorPage({
   project,
   selectedScene,
@@ -2035,7 +2115,7 @@ function DirectorPage({
   act: any;
 }) {
   const [text, setText] = useState("");
-  const [target,setTarget]=useState(selectedScene||"");
+  const [target, setTarget] = useState(selectedScene || "");
   const history = useQuery<any>({
     queryKey: ["director", project.id],
     queryFn: () => request(`/api/projects/${project.id}/director`),
@@ -2043,7 +2123,9 @@ function DirectorPage({
   });
   const [autoContinue, setAutoContinue] = useState(false);
   const [allowOperations, setAllowOperations] = useState(false);
-  const [model, setModel] = useState(project.settings.llm || models.find(m=>!m.remote_host)?.name || "");
+  const [model, setModel] = useState(
+    project.settings.llm || models.find((m) => !m.remote_host)?.name || "",
+  );
   const [count, setCount] = useState(4);
   return (
     <div className="director-layout">
@@ -2070,8 +2152,23 @@ function DirectorPage({
         {history.data?.proposals
           .filter((p: any) => p.status === "pending")
           .map((p: any) => (
-            <DirectorProposal key={p.id} proposal={p} project={project} apply={()=>act(async()=>{await request(`/api/proposals/${p.id}/apply`,{});history.refetch()},'Reviewed changes applied.')} dismiss={()=>act(async()=>{await request(`/api/proposals/${p.id}/dismiss`,{});history.refetch()},'Your current version was kept.')}/>
-
+            <DirectorProposal
+              key={p.id}
+              proposal={p}
+              project={project}
+              apply={() =>
+                act(async () => {
+                  await request(`/api/proposals/${p.id}/apply`, {});
+                  history.refetch();
+                }, "Reviewed changes applied.")
+              }
+              dismiss={() =>
+                act(async () => {
+                  await request(`/api/proposals/${p.id}/dismiss`, {});
+                  history.refetch();
+                }, "Your current version was kept.")
+              }
+            />
           ))}
         {history.data?.commands?.map((command: any) => (
           <p className="muted" key={command.id}>
@@ -2079,7 +2176,21 @@ function DirectorPage({
             {command.error ? " · " + command.error : ""}
           </p>
         ))}
-        <label className="director-scope">Discuss or change<select aria-label="Director target" value={target} onChange={e=>setTarget(e.target.value)}><option value="">This whole video · {project.title}</option>{project.scenes.map((scene,index)=><option key={scene.id} value={scene.id}>Scene {index+1} · {scene.title}</option>)}</select></label>
+        <label className="director-scope">
+          Discuss or change
+          <select
+            aria-label="Director target"
+            value={target}
+            onChange={(e) => setTarget(e.target.value)}
+          >
+            <option value="">This whole video · {project.title}</option>
+            {project.scenes.map((scene, index) => (
+              <option key={scene.id} value={scene.id}>
+                Scene {index + 1} · {scene.title}
+              </option>
+            ))}
+          </select>
+        </label>
         <form
           className="director-composer"
           onSubmit={(e) => {
@@ -2172,7 +2283,9 @@ function DirectorPage({
           }
         >
           <WandSparkles size={16} />
-          {project.scenes.length?"Propose additional scenes":"Plan my scenes"}
+          {project.scenes.length
+            ? "Propose additional scenes"
+            : "Plan my scenes"}
         </Button>
         {project.mode === "automatic" && !project.scenes.length && (
           <label>
@@ -2185,116 +2298,11 @@ function DirectorPage({
           </label>
         )}
         <p className="muted">
-          Review the proposed scenes before applying them. Existing scenes stay in place; this adds new scenes.
+          Review the proposed scenes before applying them. Existing scenes stay
+          in place; this adds new scenes.
         </p>
       </aside>
     </div>
-  );
-}
-function ExportsPage({
-  assets: initialAssets,
-  project,
-  act,
-}: {
-  assets: Asset[];
-  project: Project;
-  act: any;
-}) {
-  const [page, setPage] = useState(1);
-  useEffect(() => setPage(1), [project.id]);
-  const history = useQuery<{
-    items: Asset[];
-    has_more: boolean;
-    total: number;
-  }>({
-    queryKey: ["exports", project.id, page],
-    queryFn: () => request(`/api/projects/${project.id}/exports?page=${page}`),
-    refetchInterval: 15000,
-  });
-  const assets = history.data?.items || initialAssets;
-  return (
-    <section className="panel">
-      <div className="section-heading">
-        <div>
-          <h2>Ready for the screen</h2>
-          <p>Verified movies, with a complete history of how they were made.</p>
-        </div>
-        <Button
-          primary
-          disabled={featurePhase < 2}
-          onClick={() =>
-            act(
-              () => request(`/api/projects/${project.id}/export`, {}),
-              "Export queued with a frozen copy of your timeline.",
-            )
-          }
-        >
-          <Download size={15} />
-          Export movie
-        </Button>
-      </div>
-      {assets.length ? (
-        <div className="export-grid">
-          {assets.map((a) => (
-            <div className="export-card" key={a.id}>
-              <Media asset={a} controls />
-              <h3>{a.metadata.title || "Final movie"}</h3>
-              {a.metadata.is_editing_preview && <Badge>Editing preview</Badge>}
-              {a.metadata.timeline_revision !== project.timeline?.revision && (
-                <Badge>Earlier timeline revision</Badge>
-              )}
-              <p>
-                {a.metadata.width} × {a.metadata.height} ·{" "}
-                {Number(a.metadata.duration || 0).toFixed(2)}s
-              </p>
-              <a
-                className="text-link"
-                onClick={async (e) => {
-                  e.preventDefault();
-                  const result = await request(
-                    `/api/assets/${a.id}/ticket`,
-                    {},
-                  );
-                  window.open(
-                    useConnection.getState().url + result.url,
-                    "_blank",
-                    "noopener",
-                  );
-                }}
-                href="#"
-              >
-                Open movie <ExternalLink size={14} />
-              </a>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <Empty
-          icon={Download}
-          title="Your premiere is ahead"
-          description="When your timeline is ready, export a high-quality MP4. Generation and export settings stay independent."
-        />
-      )}
-      <div className="button-row">
-        <button
-          className="button"
-          disabled={page === 1}
-          onClick={() => setPage((p) => p - 1)}
-        >
-          Newer exports
-        </button>
-        <span>
-          Page {page} · {history.data?.total ?? assets.length} movies
-        </span>
-        <button
-          className="button"
-          disabled={!history.data?.has_more}
-          onClick={() => setPage((p) => p + 1)}
-        >
-          Older exports
-        </button>
-      </div>
-    </section>
   );
 }
 function ModelsPage({
@@ -2328,7 +2336,7 @@ function ModelsPage({
           }
         >
           <RefreshCw size={15} />
-          Refresh discovery
+          Check available tools
         </Button>
       </div>
       {workflows.length ? (
@@ -2374,7 +2382,7 @@ function ModelsPage({
       <section className="panel section">
         <h3>Local language models</h3>
         <p>
-          Planning and visual quality control have independent selectors.
+          Planning and optional AI checking can use different installed tools.
           Nothing is downloaded automatically.
         </p>
         <div className="model-capabilities">
@@ -2383,227 +2391,6 @@ function ModelsPage({
           )) || <span className="muted">Ollama is not connected.</span>}
         </div>
       </section>
-    </section>
-  );
-}
-function SettingsPage({
-  data,
-  act,
-  onPair,
-  project,
-  go,
-}: {
-  data?: Bootstrap;
-  act: any;
-  onPair: () => void;
-  project?: Project;
-  go:(p:string)=>void;
-}) {
-  const [comfy, setComfy] = useState(
-    data?.settings.comfy_url || "http://127.0.0.1:8188",
-  );
-  const [ollama, setOllama] = useState(
-    data?.settings.ollama_url || "http://127.0.0.1:11434",
-  );
-  const [pairCode, setPairCode] = useState("");
-  const [diagnostic, setDiagnostic] = useState<any>(null);
-  return (
-    <section className="settings-page">
-      <span className="eyebrow">MAKE YOURSELF AT HOME</span>
-      <h1>Settings</h1>
-      <button className="button" onClick={()=>go("Model Library")}>Advanced creation tools</button>
-      <p>Your connections, your tools, your creative space.</p>
-      <div className="panel settings-panel">
-        <h3>
-          <Monitor size={18} />
-          Local connections
-        </h3>
-        <label>
-          ComfyUI address
-          <input value={comfy} onChange={(e) => setComfy(e.target.value)} />
-        </label>
-        <label>
-          Ollama address
-          <input value={ollama} onChange={(e) => setOllama(e.target.value)} />
-        </label>
-        <div className="button-row">
-          <Button
-            primary
-            disabled={!data}
-            onClick={() =>
-              act(
-                () =>
-                  request(
-                    "/api/settings",
-                    { comfy_url: comfy, ollama_url: ollama },
-                    "PATCH",
-                  ),
-                "Connection settings saved.",
-              )
-            }
-          >
-            <Save size={15} />
-            Save connections
-          </Button>
-          <Button onClick={onPair}>
-            <Link2 size={15} />
-            Pair browser
-          </Button>
-          <Button
-            disabled={!data}
-            onClick={() =>
-              act(async () => {
-                const result = await request("/api/session/pair-code", {});
-                setPairCode(result.code);
-              }, "New one-use code created; it expires in ten minutes.")
-            }
-          >
-            Create code for another browser
-          </Button>
-        </div>
-        {pairCode && (
-          <p>
-            One-use pairing code: <strong>{pairCode}</strong> · expires in 10
-            minutes
-          </p>
-        )}
-      </div>
-      <div className="panel settings-panel">
-        <h3>
-          <ShieldCheck size={18} />
-          Privacy & resources
-        </h3>
-        <div className="setting-row">
-          <div>
-            <strong>Storage stays local</strong>
-            <p>
-              Projects, original media, credentials, and exports are excluded
-              from GitHub.
-            </p>
-          </div>
-          <Badge tone="green">Local only</Badge>
-        </div>
-        <div className="setting-row">
-          <div>
-            <strong>Conservative GPU scheduling</strong>
-            <p>
-              One GPU-intensive job at a time. Other apps’ jobs are never
-              interrupted.
-            </p>
-          </div>
-          <Badge>Conservative</Badge>
-        </div>
-        <div className="setting-row">
-          <div>
-            <strong>AI quality checking</strong>
-            <p>
-              Off by default. Enable a verified vision model in project
-              settings.
-            </p>
-          </div>
-          <Badge>Optional</Badge>
-        </div>
-        <div className="setting-row">
-          <div>
-            <strong>System RAM</strong>
-            <p>
-              {data
-                ? `${fmt(data.resources.ram_available)} available of ${fmt(data.resources.ram_total)}`
-                : "Connect your agent for actual measurements."}
-            </p>
-          </div>
-          <Badge>{data ? "Observed" : "Unknown"}</Badge>
-        </div>
-      </div>
-      <div className="panel settings-panel">
-        <h3>About this build</h3>
-        <p>
-          {phase}. Features become available as verified phases are released.
-        </p>
-        <a
-          className="text-link"
-          href="https://github.com/RorriMaesu/sceneflow-ai-studio"
-          target="_blank"
-          rel="noreferrer"
-        >
-          Source & release notes <ExternalLink size={13} />
-        </a>
-      </div>
-      {featurePhase >= 4 && <BackupPanel project={project} act={act} />}
-      {featurePhase >= 8 && <MaintenancePanel data={data} act={act} />}
-      {featurePhase >= 5 && (
-        <section className="panel settings-panel">
-          <h3>Setup & readiness</h3>
-          <ol>
-            <li>
-              Open START_STUDIO.bat. It starts available local services and
-              opens your private studio.
-            </li>
-            <li>
-              Pair this browser with the one-use local code. If your browser
-              asks, allow local-network access for this studio.
-            </li>
-            <li>
-              Refresh discovery in Model Library, then choose planning, image
-              and video models independently.
-            </li>
-            <li>
-              Open a project, review the still first, and animate that exact
-              frame. Optional AI quality checking starts off.
-            </li>
-          </ol>
-          <div className="button-row">
-            <Button
-              onClick={() =>
-                act(
-                  async () => setDiagnostic(await request("/api/diagnostics")),
-                  "Readiness check complete.",
-                )
-              }
-            >
-              Run readiness check
-            </Button>
-            <Button
-              disabled={!diagnostic}
-              onClick={() => {
-                const link = document.createElement("a");
-                const url = URL.createObjectURL(
-                  new Blob([JSON.stringify(diagnostic, null, 2)], {
-                    type: "application/json",
-                  }),
-                );
-                link.href = url;
-                link.download = "SceneFlow-diagnostics.json";
-                link.click();
-                window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-              }}
-            >
-              Download diagnostics
-            </Button>
-            <Button
-              onClick={() =>
-                act(async () => {
-                  await request("/api/session/revoke", {});
-                  useConnection.getState().disconnect();
-                }, "This browser session was revoked.")
-              }
-            >
-              Revoke this browser
-            </Button>
-          </div>
-          {diagnostic && (
-            <pre
-              style={{
-                whiteSpace: "pre-wrap",
-                maxHeight: 360,
-                overflow: "auto",
-              }}
-            >
-              {JSON.stringify(diagnostic, null, 2)}
-            </pre>
-          )}
-        </section>
-      )}
     </section>
   );
 }

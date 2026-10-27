@@ -99,12 +99,15 @@ class Store:
 
     def create_project(self, title, brief='', mode='hybrid', settings=None):
         identifier = uid()
+        shape=(settings or {}).get('video_shape','landscape')
+        if shape not in ['landscape','portrait','square']:raise ValueError('Choose a supported video shape.')
+        export_width,export_height={'landscape':(1920,1080),'portrait':(1080,1920),'square':(1080,1080)}[shape]
         values = {'image_workflow': 'qwen-image-21', 'video_workflow': 'wan22-i2v', 'llm': '', 'qa_model': '', 'qa_enabled': False, 'audio_mode': 'silent', 'width': 640, 'height': 352, 'frames': 49, 'fps': 16, 'image_steps': 12, 'candidates': 1, 'max_retries': 2, 'gates': {'storyboard': False, 'prompts': False, 'image': True, 'video': True, 'timeline': True}, 'paused': True, 'auto_export': False, **(settings or {})}
         values.setdefault('auto_approve_images',True)
         values.setdefault('auto_approve_videos',True)
         values['auto_export']=(settings or {}).get('auto_export',True)
         self.execute('INSERT INTO projects(id,title,brief,mode,settings,created,updated) VALUES(?,?,?,?,?,?,?)', (identifier, title, brief, mode, encode(values), now(), now()))
-        self.execute('INSERT INTO timelines VALUES(?,?,?,?)', (identifier, 1, encode({'clips': [], 'audio': [], 'settings': {'width': 1920, 'height': 1080, 'fps': 30, 'codec': 'h264', 'crf': 18, 'audio_mode': 'silent', 'fit': 'pad', 'transition': 'cut', 'loop': 'none', 'repeats': 1}}), now()))
+        self.execute('INSERT INTO timelines VALUES(?,?,?,?)', (identifier, 1, encode({'clips': [], 'audio': [], 'settings': {'width': export_width, 'height': export_height, 'fps': 30, 'codec': 'h264', 'crf': 18, 'audio_mode': 'silent', 'fit': 'pad', 'transition': 'cut', 'loop': 'none', 'repeats': 1}}), now()))
         self.event('project.created', {'project_id': identifier})
         return self.project(identifier)
 

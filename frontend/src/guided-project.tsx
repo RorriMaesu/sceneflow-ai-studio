@@ -1,25 +1,306 @@
-import {useState} from 'react';
-import {request} from './api';
-import {PAGE_NAMES,STEPS,nextStep,neededScenes} from './flow';
-import type {Project,Job} from './types';
-export function ProjectSteps({project,page,go}:{project:Project;page:string;go:(p:string)=>void}){
-  return <nav className="project-steps" aria-label="Steps to finish your video">{STEPS.map(([id,label],index)=><button key={id} className={page===id||(id==='Storyboard'&&page==='AI Director')?'current':''} aria-current={page===id||(id==='Storyboard'&&page==='AI Director')?'step':undefined} onClick={()=>go(id)}><span>{index+1}</span>{label}</button>)}<span className="sr-only">Working on {project.title}</span></nav>
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useRecoverableDraft, DraftNotice } from "./recoverable-draft";
+import { request } from "./api";
+import { PAGE_NAMES, STEPS, nextStep, neededScenes } from "./flow";
+import type { Project, Job } from "./types";
+export function ProjectSteps({
+  project,
+  page,
+  go,
+}: {
+  project: Project;
+  page: string;
+  go: (p: string) => void;
+}) {
+  return (
+    <nav className="project-steps" aria-label="Steps to finish your video">
+      {STEPS.map(([id, label], index) => (
+        <button
+          key={id}
+          className={
+            page === id || (id === "Storyboard" && page === "AI Director")
+              ? "current"
+              : ""
+          }
+          aria-current={
+            page === id || (id === "Storyboard" && page === "AI Director")
+              ? "step"
+              : undefined
+          }
+          onClick={() => go(id)}
+        >
+          <span>{index + 1}</span>
+          {label}
+        </button>
+      ))}
+      <span className="sr-only">Working on {project.title}</span>
+    </nav>
+  );
 }
-export function NextStep({project,jobs,page,go,act,busy}:{project:Project;jobs:Job[];page:string;go:(p:string)=>void;act:any;busy:boolean}){
-  const next=nextStep(project,jobs);const [more,setMore]=useState(false);
-  const kind=page==='Image Studio'?'image':page==='Video Studio'?'video':null;
-  const needed=kind?neededScenes(project,kind):[];
-  const waiting=jobs.some(j=>j.project_id===project.id&&['queued','running','submitted','reconciling'].includes(j.status));
-  const create=()=>act(()=>request(`/api/projects/${project.id}/produce`,{scope:kind==='image'?'missing_stills':'missing_videos',scene_ids:needed.map(s=>s.id)}),`Requested ${needed.length} ${kind==='image'?'starting photos':'clips'}. Follow progress in Activity.`);
-  return <section className="next-step"><div><strong>{kind&&needed.length?`${needed.length} ${kind==='image'?'starting photos':'clips'} to create`:next.label}</strong><p>{kind&&needed.length?'Only the listed missing scenes will be created. Earlier versions stay available.':next.detail}</p></div>
-    {kind&&needed.length?<button className="button primary" disabled={busy||waiting} onClick={create}>Create {needed.length} {kind==='image'?'photos':'clips'}</button>:(next.page!==page||page==='Storyboard')&&<button className="button primary" onClick={()=>go(next.page===page?'AI Director':next.page)}>{next.label}</button>}
-    <button className="button" aria-expanded={more} onClick={()=>setMore(!more)}>More actions</button>
-    {more&&<div className="expert-actions"><p>Project-wide production uses this video's saved settings and mode. It may resume automatic work. Review your scenes first.</p><button className="button" disabled={busy||!project.scenes.length} onClick={()=>act(()=>request(`/api/projects/${project.id}/produce`,{scope:'all'}),'Production requested. Follow progress in Activity.')}>Continue all unfinished scenes</button><button className="button" onClick={()=>go('AI Director')}>Ask the Director</button><button className="button" onClick={()=>go('Model Library')}>Advanced tools</button></div>}
-  </section>
+export function NextStep({
+  project,
+  jobs,
+  page,
+  go,
+  act,
+  busy,
+}: {
+  project: Project;
+  jobs: Job[];
+  page: string;
+  go: (p: string) => void;
+  act: any;
+  busy: boolean;
+}) {
+  const proposals = useQuery<any>({
+    queryKey: ["director", project.id],
+    queryFn: () => request(`/api/projects/${project.id}/director`),
+    enabled: !project.scenes.length,
+    refetchInterval: 5000,
+  });
+  const pendingProposal = proposals.data?.proposals?.some(
+    (p: any) => p.status === "pending" && p.base_revision === project.revision,
+  );
+  const next = pendingProposal
+    ? {
+        page: "AI Director",
+        label: "Review your suggested scenes",
+        detail:
+          "Your Director prepared a proposal. Review and apply it before creating photos.",
+      }
+    : nextStep(project, jobs);
+  const [more, setMore] = useState(false);
+  const kind =
+    page === "Image Studio"
+      ? "image"
+      : page === "Video Studio"
+        ? "video"
+        : null;
+  const needed = kind ? neededScenes(project, kind) : [];
+  const waiting = jobs.some(
+    (j) =>
+      j.project_id === project.id &&
+      ["queued", "running", "submitted", "reconciling"].includes(j.status),
+  );
+  const create = () =>
+    act(
+      () =>
+        request(`/api/projects/${project.id}/produce`, {
+          scope: kind === "image" ? "missing_stills" : "missing_videos",
+          scene_ids: needed.map((s) => s.id),
+        }),
+      `Requested ${needed.length} ${kind === "image" ? "starting photos" : "clips"}. Follow progress in Activity.`,
+    );
+  return (
+    <section className="next-step">
+      <div>
+        <strong>
+          {kind && needed.length
+            ? `${needed.length} ${kind === "image" ? "starting photos" : "clips"} to create`
+            : next.label}
+        </strong>
+        <p>
+          {kind && needed.length
+            ? "Only the listed missing scenes will be created. Earlier versions stay available."
+            : next.detail}
+        </p>
+      </div>
+      {kind && needed.length ? (
+        <button
+          className="button primary"
+          disabled={busy || waiting}
+          onClick={create}
+        >
+          Create {needed.length} {kind === "image" ? "photos" : "clips"}
+        </button>
+      ) : (
+        (next.page !== page || page === "Storyboard") && (
+          <button
+            className="button primary"
+            onClick={() => go(next.page === page ? "AI Director" : next.page)}
+          >
+            {next.label}
+          </button>
+        )
+      )}
+      <button
+        className="button"
+        aria-expanded={more}
+        onClick={() => setMore(!more)}
+      >
+        More actions
+      </button>
+      {more && (
+        <div className="expert-actions">
+          <p>
+            Project-wide production uses this video's saved settings and mode.
+            It may resume automatic work. Review your scenes first.
+          </p>
+          <button
+            className="button"
+            disabled={busy || !project.scenes.length}
+            onClick={() =>
+              act(
+                () =>
+                  request(`/api/projects/${project.id}/produce`, {
+                    scope: "all",
+                  }),
+                "Production requested. Follow progress in Activity.",
+              )
+            }
+          >
+            Continue all unfinished scenes
+          </button>
+          <button className="button" onClick={() => go("AI Director")}>
+            Ask the Director
+          </button>
+          <button className="button" onClick={() => go("Model Library")}>
+            Advanced tools
+          </button>
+        </div>
+      )}
+    </section>
+  );
 }
-export function StoryGuide({project,go}:{project:Project;go:(p:string)=>void}){
-  return <div className="story-guide"><div><h2>Your story</h2><p>{project.brief||'Tell the Director what you would like to make, or add your own scenes below.'}</p><p className="muted">Review your scenes first. Then choose their starting photos and motion. You can return to any step.</p></div><button className="button" onClick={()=>go('AI Director')}>Plan or refine with the Director</button></div>
+export function StoryGuide({
+  project,
+  go,
+  act,
+}: {
+  project: Project;
+  go: (p: string) => void;
+  act: any;
+}) {
+  const draft = useRecoverableDraft(
+    "story." + project.id,
+    { brief: project.brief },
+    project.revision,
+    (v) => typeof v?.brief === "string",
+  );
+  return (
+    <div className="story-guide">
+      <div>
+        <details>
+          <summary>Your story idea · edit</summary>
+          <DraftNotice draft={draft} />
+          <label>
+            What happens in your video?
+            <textarea
+              rows={4}
+              value={draft.value.brief}
+              maxLength={30000}
+              onChange={(e) => draft.setValue({ brief: e.target.value })}
+            />
+          </label>
+          <p className="muted">
+            This guides new Director requests. Existing scenes and their media
+            stay as they are.
+          </p>
+          <button
+            className="button"
+            disabled={!draft.dirty || draft.conflict}
+            onClick={() =>
+              act(async () => {
+                const p = await request(
+                  `/api/projects/${project.id}`,
+                  { revision: draft.revision, brief: draft.value.brief },
+                  "PATCH",
+                );
+                draft.adopt({ brief: p.brief }, p.revision);
+              }, "Story idea saved.")
+            }
+          >
+            Save story idea
+          </button>
+        </details>
+      </div>
+      <button className="button" onClick={() => go("AI Director")}>
+        Plan or refine with the Director
+      </button>
+    </div>
+  );
 }
-export function HelpPage({go}:{go:(p:string)=>void}){
-  return <section className="help-page"><h1>A clear path to your video</h1><p>Start with an idea. Choose the pictures. Add motion. Arrange the clips. Save your video.</p><ol>{STEPS.map(([id,label])=><li key={id}><strong>{label}</strong><p>{{Storyboard:'Describe your idea and review the scenes. Nothing is generated until you request it.','Image Studio':'Choose reference images, create starting photos and pick the ones you want.','Video Studio':'Animate the chosen photos. Review each clip before using it.',Timeline:'Put the clips in order, trim them and add optional music or voice.',Exports:'Create a finished MP4, then download it or find it on your computer.'}[id]}</p></li>)}</ol><details><summary>What do the three modes mean?</summary><p>Assisted waits at your chosen review points. Autopilot continues automatically after you start production. Manual starts only tasks you request. You can switch modes while keeping your saved work.</p></details><details><summary>Where are my files and drafts?</summary><p>Saved projects and media live on this computer. Protected drafts are kept in this browser until you save or discard them. A draft in one browser is not available in another browser.</p></details><details><summary>Why is the app waiting?</summary><p>Open Activity to see whether work is paused, awaiting your review, or waiting for the computer's resources. Pausing lets the current task finish. If a connection is uncertain, the app checks for the original result before retrying.</p></details><details><summary>My studio is disconnected</summary><p>Open START_STUDIO.bat on your PC. It starts the local tools and opens the studio. Pair another browser with the one-use code. If your browser cannot connect, use the local interface.</p><a className="button" href="http://127.0.0.1:8770/" target="_blank" rel="noreferrer">Open local studio</a></details><div className="button-row"><button className="button" onClick={()=>go('Overview')}>My videos</button><button className="button" onClick={()=>go('Settings')}>Connection & settings</button></div></section>
+export function HelpPage({ go }: { go: (p: string) => void }) {
+  return (
+    <section className="help-page">
+      <h1>A clear path to your video</h1>
+      <p>
+        Start with an idea. Choose the pictures. Add motion. Arrange the clips.
+        Save your video.
+      </p>
+      <ol>
+        {STEPS.map(([id, label]) => (
+          <li key={id}>
+            <strong>{label}</strong>
+            <p>
+              {
+                {
+                  Storyboard:
+                    "Describe your idea and review the scenes. Nothing is generated until you request it.",
+                  "Image Studio":
+                    "Choose reference images, create starting photos and pick the ones you want.",
+                  "Video Studio":
+                    "Animate the chosen photos. Review each clip before using it.",
+                  Timeline:
+                    "Put the clips in order, trim them and add optional music or voice.",
+                  Exports:
+                    "Create a finished MP4, then download it or find it on your computer.",
+                }[id]
+              }
+            </p>
+          </li>
+        ))}
+      </ol>
+      <details>
+        <summary>What do the three modes mean?</summary>
+        <p>
+          Assisted waits at your chosen review points. Autopilot continues
+          automatically after you start production. Manual starts only tasks you
+          request. You can switch modes while keeping your saved work.
+        </p>
+      </details>
+      <details>
+        <summary>Where are my files and drafts?</summary>
+        <p>
+          Saved projects and media live on this computer. Protected drafts are
+          kept in this browser until you save or discard them. A draft in one
+          browser is not available in another browser.
+        </p>
+      </details>
+      <details>
+        <summary>Why is the app waiting?</summary>
+        <p>
+          Open Activity to see whether work is paused, awaiting your review, or
+          waiting for the computer's resources. Pausing lets the current task
+          finish. If a connection is uncertain, the app checks for the original
+          result before retrying.
+        </p>
+      </details>
+      <details>
+        <summary>My studio is disconnected</summary>
+        <p>
+          Open START_STUDIO.bat on your PC. It starts the local tools and opens
+          the studio. Pair another browser with the one-use code. If your
+          browser cannot connect, use the local interface.
+        </p>
+        <a
+          className="button"
+          href="http://127.0.0.1:8770/"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Open local studio
+        </a>
+      </details>
+      <div className="button-row">
+        <button className="button" onClick={() => go("Overview")}>
+          My videos
+        </button>
+        <button className="button" onClick={() => go("Settings")}>
+          Connection & settings
+        </button>
+      </div>
+    </section>
+  );
 }

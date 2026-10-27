@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { request, upload, useConnection } from "./api";
 import type { Asset, Project, Scene } from "./types";
 import { AssetQuality } from "./quality-panel";
-import {useRecoverableDraft,DraftNotice} from "./recoverable-draft";
+import { useRecoverableDraft, DraftNotice } from "./recoverable-draft";
 
 export function SceneKeyframes({
   scene,
@@ -95,10 +95,24 @@ export function VisualBible({
     queryFn: () => request("/api/assets?project_id=" + project.id),
     refetchInterval: 15000,
   });
-  const draft=useRecoverableDraft('look.'+project.id,{chosen:project.settings.reference_asset_ids||[],rules:project.settings.visual_rules||'',style:project.settings.style_guide||''},project.revision,v=>Array.isArray(v?.chosen)&&typeof v?.rules==='string');
-  const {chosen,rules}=draft.value;const style=(draft.value as any).style??project.settings.style_guide??'';const dirty=draft.dirty,base=draft.revision;
-  const setChosen=(chosen:string[])=>draft.setValue(v=>({...v,chosen}));
-  const setRules=(rules:string)=>draft.setValue(v=>({...v,rules}));
+  const draft = useRecoverableDraft(
+    "look." + project.id,
+    {
+      chosen: project.settings.reference_asset_ids || [],
+      rules: project.settings.visual_rules || "",
+      style: project.settings.style_guide || "",
+    },
+    project.revision,
+    (v) => Array.isArray(v?.chosen) && typeof v?.rules === "string",
+  );
+  const { chosen, rules } = draft.value;
+  const style =
+    (draft.value as any).style ?? project.settings.style_guide ?? "";
+  const dirty = draft.dirty,
+    base = draft.revision;
+  const setChosen = (chosen: string[]) =>
+    draft.setValue((v) => ({ ...v, chosen }));
+  const setRules = (rules: string) => draft.setValue((v) => ({ ...v, rules }));
   const images =
     assets.data?.filter(
       (a) => a.kind === "image" && a.metadata.role !== "edit_mask",
@@ -109,14 +123,25 @@ export function VisualBible({
         Look & characters · reference pictures{" "}
         {chosen.length ? `· ${chosen.length} selected` : ""}
       </summary>
-      <DraftNotice draft={draft}/>
+      <DraftNotice draft={draft} />
       <p>
         Choose up to three approved images to guide every new still. Image 1
         sets the initial framing. The original files and their hashes stay
         attached to each attempt. References guide appearance; they do not
         guarantee identity.
       </p>
-      <label>Overall visual style<textarea rows={2} maxLength={5000} value={style} onChange={e=>draft.setValue(v=>({...v,style:e.target.value}))} placeholder="For example: warm storybook illustration, soft light and rich colors."/></label>
+      <label>
+        Overall visual style
+        <textarea
+          rows={2}
+          maxLength={5000}
+          value={style}
+          onChange={(e) =>
+            draft.setValue((v) => ({ ...v, style: e.target.value }))
+          }
+          placeholder="For example: warm storybook illustration, soft light and rich colors."
+        />
+      </label>
       <label>
         Details to keep consistent
         <textarea
@@ -164,9 +189,9 @@ export function VisualBible({
                   setChosen(
                     e.target.checked
                       ? [...chosen, a.id]
-                      : chosen.filter((id:string) => id !== a.id),
+                      : chosen.filter((id: string) => id !== a.id),
                   );
-                      }}
+                }}
               />{" "}
               {chosen.includes(a.id)
                 ? `Reference ${chosen.indexOf(a.id) + 1}`
@@ -175,7 +200,7 @@ export function VisualBible({
           </label>
         ))}
       </div>
-      {dirty && base !== project.revision && (
+      {dirty && project.revision > base && (
         <p role="alert">
           This project changed elsewhere. Reload the visual bible before
           replacing newer settings.
@@ -188,18 +213,29 @@ export function VisualBible({
       </p>
       <button
         className="button primary"
-        disabled={!dirty||draft.conflict}
+        disabled={!dirty || draft.conflict}
         onClick={() =>
           act(async () => {
-            const p=await request(
+            const p = await request(
               `/api/projects/${project.id}`,
               {
                 revision: base,
-                settings: { reference_asset_ids: chosen, visual_rules: rules,style_guide:style },
+                settings: {
+                  reference_asset_ids: chosen,
+                  visual_rules: rules,
+                  style_guide: style,
+                },
               },
               "PATCH",
             );
-            draft.adopt({chosen:p.settings.reference_asset_ids||[],rules:p.settings.visual_rules||'',style:p.settings.style_guide||''},p.revision);
+            draft.adopt(
+              {
+                chosen: p.settings.reference_asset_ids || [],
+                rules: p.settings.visual_rules || "",
+                style: p.settings.style_guide || "",
+              },
+              p.revision,
+            );
           }, "Visual bible saved. Future jobs use the new references and rules.")
         }
       >

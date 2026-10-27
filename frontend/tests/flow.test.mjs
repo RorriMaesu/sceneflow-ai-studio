@@ -15,3 +15,4 @@ test('photo review is offered before regenerating an available current candidate
   assert.equal(neededScenes({...project,scenes:[candidate]},'image').length,0);
   assert.equal(neededScenes({...project,scenes:[candidate]},'video').length,0);
 });
+test('planning already in progress does not invite a duplicate plan for an empty project',()=>assert.equal(nextStep({...project,scenes:[]},[{project_id:'p',kind:'plan',status:'queued'}]).page,'Generation Queue'));
