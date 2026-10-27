@@ -91,10 +91,18 @@ def test_changed_source_hash_blocks_frozen_export(editor):
 
 def test_backup_restore_uses_new_ids_and_never_resumes_work(editor):
     store,m,p,scenes,assets,root=editor;timeline(editor)
+    reference_path=root/'temp'/'reference.png';Image.new('RGB',(64,64),'blue').save(reference_path)
+    reference=m['media'].add_asset(p['id'],None,None,'image',reference_path,extra={'role':'visual_reference'})
+    store.update_project(p['id'],p['revision'],{'settings':{'reference_asset_ids':[reference['id']]}})
+    store.update_scene(scenes[0]['id'],scenes[0]['revision'],body={'reference_asset_ids':[reference['id']]})
     m['media'].select_asset(assets[0]['id'],True)
     bundle=m['bundles'].create_bundle(p['id']);restored=m['bundles'].restore_bundle(root/'backups'/bundle['filename'])
     assert restored['id']!=p['id'] and restored['mode']=='hybrid'
     assert len(restored['scenes'])==3
+    restored_reference=restored['settings']['reference_asset_ids'][0]
+    assert restored_reference!=reference['id']
+    assert store.one('SELECT project_id FROM assets WHERE id=?',(restored_reference,))['project_id']==restored['id']
+    assert restored['scenes'][0]['body']['reference_asset_ids']==[restored_reference]
     assert set(s['id'] for s in restored['scenes']).isdisjoint(s['id'] for s in scenes)
     for scene in restored['scenes']:
         for asset in scene['assets']:

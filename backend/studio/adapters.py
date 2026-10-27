@@ -46,12 +46,34 @@ def wan_graph(s, prefix, image):
     return graph
 
 
+def qwen_reference_graph(s,prefix,images,mask=None):
+    graph=qwen_graph(s,prefix)
+    graph['text']['inputs'].pop('images',None)
+    graph['text']['inputs'].update(vae=['vae',0],resolution=0)
+    for index,image in enumerate(images[:3]):
+        key='reference_'+str(index+1);graph[key]=node('LoadImage',image=image)
+        graph[key+'_scale']=node('ImageScale',image=[key,0],upscale_method='lanczos',width=s['width'] if index==0 else 512,height=s['height'] if index==0 else 0,crop='disabled')
+        graph['text']['inputs']['images.image_'+str(index+1)]=[key+'_scale',0]
+    graph['sample']['inputs']['latent_image']=['text',2]
+    graph.pop('latent')
+    if mask:
+        graph['mask_load']=node('LoadImage',image=mask)
+        graph['mask']=node('ImageToMask',image=['mask_load',0],channel='red')
+        graph['edit_latent']=node('VAEEncode',pixels=['reference_1_scale',0],vae=['vae',0])
+        graph['edit_noise_mask']=node('SetLatentNoiseMask',samples=['edit_latent',0],mask=['mask',0])
+        graph['sample']['inputs'].update(latent_image=['edit_noise_mask',0],denoise=s.get('edit_strength',.6))
+        graph['composite']=node('ImageCompositeMasked',destination=['reference_1_scale',0],source=['decode',0],x=0,y=0,resize_source=False,mask=['mask',0])
+        graph['save']['inputs']['images']=['composite',0]
+    return graph
+
+
 BUILTINS = [
+    {'id':'qwen-image-21-reference','name':'Qwen Image 2.1 · References & correction','family':'Qwen Image 2.1','task':'text_to_image','capabilities':{'negative_prompt':True,'reference_images':True,'image_editing':True,'masked_composite':True,'audio':False},'constraints':{'multiple':32,'max_width':2048,'max_height':2048},'mappings':{},'output_nodes':['save']},
     {'id': 'qwen-image-21', 'name': 'Qwen Image 2.1 · INT8', 'family': 'Qwen Image 2.1', 'task': 'text_to_image', 'capabilities': {'negative_prompt': True, 'reference_images': False, 'image_editing':False, 'audio': False}, 'constraints': {'multiple': 32, 'max_width': 2048, 'max_height': 2048}, 'mappings': {}, 'output_nodes': ['save']},
     {'id': 'wan22-i2v', 'name': 'Wan 2.2 · I2V A14B FP8', 'family': 'Wan 2.2', 'task': 'image_to_video', 'capabilities': {'negative_prompt': True, 'source_image': True, 'audio': False, 'first_last_frame': False}, 'constraints': {'multiple': 16, 'frames_multiple': 4, 'frames_offset': 1, 'max_width': 832, 'max_height': 480, 'max_frames': 81}, 'mappings': {}, 'output_nodes': ['save']},
 ]
 DUMMY = {'positive_prompt': '', 'negative_prompt': '', 'width': 640, 'height': 352, 'seed': 1, 'frames': 49, 'fps': 16}
-SAFE_NODES = {'UNETLoader', 'CLIPLoader', 'VAELoader', 'CLIPTextEncode', 'TextEncodeQwenImage21', 'EmptyLatentImage', 'EmptySD3LatentImage', 'WanImageToVideo', 'KSampler', 'KSamplerAdvanced', 'ModelSamplingSD3', 'LoraLoaderModelOnly', 'VAEDecode', 'VAEDecodeTiled', 'LoadImage', 'SaveImage', 'SaveImageAdvanced', 'CreateVideo', 'SaveVideo', 'CheckpointLoaderSimple', 'VAEEncode', 'ImageScale', 'CLIPVisionLoader', 'CLIPVisionEncode', 'WanFirstLastFrameToVideo', 'LoadAudio', 'SaveAudio', 'LTXVImgToVideo', 'LTXVConditioning', 'LTXVScheduler', 'SamplerCustomAdvanced', 'RandomNoise', 'KSamplerSelect', 'CFGGuider', 'BasicGuider', 'LoraLoader'}
+SAFE_NODES = {'SetLatentNoiseMask', 'ImageToMask', 'ImageCompositeMasked', 'UNETLoader', 'CLIPLoader', 'VAELoader', 'CLIPTextEncode', 'TextEncodeQwenImage21', 'EmptyLatentImage', 'EmptySD3LatentImage', 'WanImageToVideo', 'KSampler', 'KSamplerAdvanced', 'ModelSamplingSD3', 'LoraLoaderModelOnly', 'VAEDecode', 'VAEDecodeTiled', 'LoadImage', 'SaveImage', 'SaveImageAdvanced', 'CreateVideo', 'SaveVideo', 'CheckpointLoaderSimple', 'VAEEncode', 'ImageScale', 'CLIPVisionLoader', 'CLIPVisionEncode', 'WanFirstLastFrameToVideo', 'LoadAudio', 'SaveAudio', 'LTXVImgToVideo', 'LTXVConditioning', 'LTXVScheduler', 'SamplerCustomAdvanced', 'RandomNoise', 'KSamplerSelect', 'CFGGuider', 'BasicGuider', 'LoraLoader'}
 
 
 def graph_hash(graph):
@@ -89,7 +111,7 @@ def validate_graph(graph, info, output_nodes):
             if isinstance(value, list) and len(value) == 2 and isinstance(value[0], str) and isinstance(value[1], int):
                 if value[0] not in graph:
                     reasons.append(f'{kind}: input {name} references a missing node.')
-            elif spec and isinstance(spec[0], list) and value not in spec[0]:
+            elif spec and isinstance(spec[0], list) and value not in spec[0] and not (kind=='LoadImage' and name=='image'):
                 reasons.append(f'{kind}: selected {name} is not available ({value}).')
     return list(dict.fromkeys(reasons))
 
@@ -105,7 +127,8 @@ class Registry:
             self.info = response.json()
         for entry in BUILTINS:
             previous = db.one('SELECT body FROM workflow_registry WHERE id=?', (entry['id'],))
-            data = {**entry, 'graph': qwen_graph(DUMMY, 'sceneflow/preview') if entry['task']=='text_to_image' else wan_graph(DUMMY, 'sceneflow/preview', 'example.png')}
+            preview=qwen_reference_graph(DUMMY,'sceneflow/preview',['reference.png']) if entry['id']=='qwen-image-21-reference' else qwen_graph(DUMMY,'sceneflow/preview') if entry['task']=='text_to_image' else wan_graph(DUMMY,'sceneflow/preview','example.png')
+            data = {**entry, 'graph': preview}
             if previous:
                 old = json.loads(previous['body'])
                 data['tested'] = old.get('tested', False) and old.get('workflow_hash') == graph_hash(data['graph'])
@@ -130,7 +153,7 @@ class Registry:
             raise ValueError('The selected workflow has not been discovered. Refresh the Model Library.')
         return json.loads(row['body'])
 
-    def build(self, identifier, snapshot, prefix, image=None):
+    def build(self, identifier, snapshot, prefix, image=None, references=None, mask=None):
         entry = copy.deepcopy(snapshot.get('workflow_definition') or self.get(identifier))
         if entry['status'] != 'ready':
             raise ValueError('The selected workflow is unavailable: '+'; '.join(entry['reasons']))
@@ -140,7 +163,9 @@ class Registry:
             raise ValueError('Resolution is outside this verified workflow preset. Use dimensions supported by the Model Library.')
         if entry['task'] == 'image_to_video' and (snapshot['frames'] > c.get('max_frames', 81) or (snapshot['frames']-c.get('frames_offset', 0)) % c.get('frames_multiple', 1)):
             raise ValueError('The frame count does not match this workflow’s validated limits.')
-        if identifier == 'qwen-image-21':
+        if identifier == 'qwen-image-21-reference':
+            graph=qwen_reference_graph(snapshot,prefix,references or ['reference.png'],mask)
+        elif identifier == 'qwen-image-21':
             graph = qwen_graph(snapshot, prefix)
         elif identifier == 'wan22-i2v':
             if not image:

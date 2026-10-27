@@ -71,6 +71,11 @@ import { ProductionSettings } from "./production-settings";
 import { TimelineEditor } from "./timeline-editor";
 import { BackupPanel, WorkflowImporter, SceneHistory } from "./tools-panels";
 import { AssetQuality } from "./quality-panel";
+import {
+  VisualBible,
+  CorrectionCanvas,
+  CandidateReview,
+} from "./continuity-panel";
 
 const client = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -222,7 +227,10 @@ function Media({
         <ImageIcon size={24} />
       </div>
     );
-  const source = useConnection.getState().url + data.url;
+  const source =
+    useConnection.getState().url +
+    data.url +
+    (asset.kind === "image" && !controls ? "&thumbnail=true" : "");
   if (failed)
     return (
       <div className="media-placeholder">
@@ -984,6 +992,12 @@ function Studio() {
                       </Button>
                     </div>
                   </div>
+                  <VisualBible
+                    key={project.id}
+                    project={project}
+                    act={act}
+                    renderMedia={(a) => <Media asset={a} />}
+                  />
                   {featurePhase >= 3 && (
                     <ProductionSettings
                       key={project.id}
@@ -1776,10 +1790,25 @@ function SceneInspector({
           <SceneHistory scene={scene} act={act} />
         ) : (
           <>
+            <CandidateReview
+              scene={scene}
+              project={project}
+              act={act}
+              renderMedia={(a) => <Media asset={a} controls />}
+            />
             {scene.assets.length ? (
               scene.assets.map((a) => (
                 <div className="take" key={a.id}>
                   <Media asset={a} controls />
+                  {a.kind === "image" && (
+                    <CorrectionCanvas
+                      key={a.id}
+                      asset={a}
+                      project={project}
+                      act={act}
+                      renderMedia={(v) => <Media asset={v} controls />}
+                    />
+                  )}
                   <div>
                     <Badge>{a.kind}</Badge>
                     <Badge tone={a.approved ? "green" : ""}>
@@ -2287,7 +2316,7 @@ function DirectorPage({
   );
 }
 function ExportsPage({
-  assets,
+  assets: initialAssets,
   project,
   act,
 }: {
@@ -2295,6 +2324,18 @@ function ExportsPage({
   project: Project;
   act: any;
 }) {
+  const [page, setPage] = useState(1);
+  useEffect(() => setPage(1), [project.id]);
+  const history = useQuery<{
+    items: Asset[];
+    has_more: boolean;
+    total: number;
+  }>({
+    queryKey: ["exports", project.id, page],
+    queryFn: () => request(`/api/projects/${project.id}/exports?page=${page}`),
+    refetchInterval: 15000,
+  });
+  const assets = history.data?.items || initialAssets;
   return (
     <section className="panel">
       <div className="section-heading">
@@ -2357,6 +2398,25 @@ function ExportsPage({
           description="When your timeline is ready, export a high-quality MP4. Generation and export settings stay independent."
         />
       )}
+      <div className="button-row">
+        <button
+          className="button"
+          disabled={page === 1}
+          onClick={() => setPage((p) => p - 1)}
+        >
+          Newer exports
+        </button>
+        <span>
+          Page {page} · {history.data?.total ?? assets.length} movies
+        </span>
+        <button
+          className="button"
+          disabled={!history.data?.has_more}
+          onClick={() => setPage((p) => p + 1)}
+        >
+          Older exports
+        </button>
+      </div>
     </section>
   );
 }

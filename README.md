@@ -2,7 +2,7 @@
 
 A local filmmaking studio for planning scenes, generating starting stills, animating their exact images, reviewing takes and assembling a movie. The public React interface connects to an authenticated Windows agent on your computer.
 
-**Release 0.5 — five functional build phases.** Includes local Ollama direction, Qwen Image generation, Wan 2.2 animation, three production modes, durable jobs, live edits, optional visual QA, timeline editing, imported sound, validated exports and portable backups.
+**Release 0.6 — creative continuity.** Adds a visual bible, exact reference-image provenance, reference-guided correction with brush masks, candidate comparisons, reference-aware visual review and project-scoped export history to the local production studio.
 
 - [Published interface](https://rorrimaesu.github.io/sceneflow-ai-studio/)
 - [Verification ledger](docs/EVIDENCE.md)
@@ -52,7 +52,7 @@ Exports include H.264/H.265, pad/crop fitting, configurable size/frame rate, cut
 
 **AI Quality Control starts off.** Its model is independent and must advertise local vision capability. Reviews can run automatically, manually, on selected candidates or on suspicious outputs.
 
-Video review uses first, middle and final samples. Technical measurements are separate from advisory visual scores. Samples cannot establish complete motion adherence or sound quality. The tested model returned conflicting high scores and regeneration advice; the interface flags contradictions for human review and prevents them from triggering regeneration.
+New video reviews inspect seven evenly spaced samples and the saved visual references. Actual sampled frames can be opened without AI inference. Technical measurements are separate from advisory visual scores; samples cannot establish complete motion adherence or sound quality. The tested model returned conflicting high scores and regeneration advice; the interface flags contradictions for human review and prevents them from triggering regeneration.
 
 Quality retries require an actionable low-scoring failure, preserve earlier attempts, stop without improvement and are limited to two per stage. Manual approval takes precedence.
 
@@ -62,7 +62,11 @@ Verified native adapters: Qwen Image 2.1 INT8 and Wan 2.2 I2V A14B FP8 with the 
 
 The advanced editor imports API-format workflows with validated mappings, installed nodes/model choices, output nodes and conservative limits. Every image loader must map to the registered source still. Static reference media, audio conditioning and unapproved node classes require a separately verified adapter.
 
-LTX synchronized generation, first/last-frame controls, masked editing, outpainting, neural upscaling and specialized video-editing models are not configured or verified here. The interface explains unavailable capabilities. Large models and custom nodes are never downloaded automatically.
+The visual bible selects up to three project-owned reference images and locked appearance rules. Qwen reference generation uses those exact files and verifies their hashes before submission. A scene can override references through its saved settings. Changing references or rules invalidates affected pending inputs while active jobs and old takes remain intact.
+
+The correction canvas supports zoom, brush masks, erasing, brush undo, strength and step controls, and before/after comparison. Masked correction uses source-encoded Qwen latents with a noise mask, then composites against the original and rejects any change outside zero-mask pixels. Corrections remain unselected takes until approved. Supported target dimensions are multiples of 32 up to 2048 pixels; hardware capacity remains preset dependent.
+
+LTX synchronized generation, first/last-frame controls, outpainting, neural upscaling and specialized video-editing models are not yet configured or verified here. Large models and custom nodes are never downloaded automatically.
 
 ## Backup and restore
 

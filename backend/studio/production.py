@@ -42,7 +42,10 @@ def pause(project_id, paused=True):
 
 def stage_signature(scene,project,kind,source_id=None):
     body=scene['body'];config=project['settings'];fps=int(config.get('fps',16))
-    inputs={'positive_prompt':body.get(kind+'_prompt' if kind=='image' else 'video_prompt',''),'negative_prompt':body.get('negative_prompt',''),'workflow_id':body.get(kind+'_workflow') or config.get(kind+'_workflow'),'base_seed':int(body.get('seed',26102026)),'width':int(config.get('width',640)),'height':int(config.get('height',352))}
+    from .continuity import visual_inputs
+    prompt,workflow,refs=visual_inputs(scene,project,kind)
+    inputs={'positive_prompt':prompt,'negative_prompt':body.get('negative_prompt',''),'workflow_id':workflow,'base_seed':int(body.get('seed',26102026)),'width':int(config.get('width',640)),'height':int(config.get('height',352))}
+    if refs:inputs['reference_asset_ids']=refs
     if kind=='image':inputs['image_steps']=int(config.get('image_steps',12))
     else:inputs.update(frames=int(round(float(body.get('duration',3))*fps/4)*4+1),fps=fps,source_asset_id=source_id if source_id is not None else scene['selected_image_id'])
     return hashlib.sha256(encode(inputs).encode()).hexdigest()
@@ -51,6 +54,7 @@ def stage_signature(scene,project,kind,source_id=None):
 def snapshot_signature(snapshot,kind):
     config=snapshot.get('config',{})
     inputs={k:snapshot.get(k,config.get(k,default)) for k,default in [('positive_prompt',''),('negative_prompt',''),('workflow_id',''),('base_seed',snapshot.get('seed',26102026)-snapshot.get('candidate_index',0)),('width',640),('height',352)]}
+    if snapshot.get('reference_asset_ids'):inputs['reference_asset_ids']=snapshot['reference_asset_ids']
     if kind=='image':inputs['image_steps']=int(snapshot.get('image_steps',config.get('image_steps',12)))
     else:inputs.update(frames=snapshot['frames'],fps=snapshot['fps'],source_asset_id=snapshot['source_asset_id'])
     return hashlib.sha256(encode(inputs).encode()).hexdigest()
@@ -63,7 +67,8 @@ def snapshot_is_current(snapshot,scene,project,kind):
 def snapshot_for(scene, project, kind, source=None, config=None):
     body = scene['body']
     config = copy.deepcopy(config or project['settings'])
-    workflow_id = body.get('image_workflow' if kind=='image' else 'video_workflow') or config['image_workflow' if kind=='image' else 'video_workflow']
+    from .continuity import visual_inputs,owned_references
+    prompt,workflow_id,reference_ids=visual_inputs(scene,{**project,'settings':config},kind)
     entry = registry.get(workflow_id)
     if entry['status'] != 'ready':
         raise ValueError('Choose a verified available workflow before generating: '+entry['name'])
@@ -81,6 +86,12 @@ def snapshot_for(scene, project, kind, source=None, config=None):
     if kind=='video' and (not source or source['kind']!='image' or source['scene_id']!=scene['id']):
         raise ValueError('Select a valid starting still from this scene before animating it.')
     data['base_seed']=int(body.get('seed',26102026))
+    data['positive_prompt']=prompt
+    data['visual_rules']=config.get('visual_rules','')
+    if workflow_id=='qwen-image-21-reference' and not reference_ids:raise ValueError('Choose at least one visual reference before using the reference workflow.')
+    if reference_ids:
+        if not entry['capabilities'].get('reference_images'):raise ValueError('Choose the Qwen References workflow to use visual references.')
+        data['reference_asset_ids']=reference_ids;data['reference_assets']=owned_references(db,project['id'],reference_ids)
     data['scene_brief']=body.get('summary','')
     registry.build(workflow_id,data,'sceneflow/preflight','source.png' if kind=='video' else None)
     return data
@@ -353,6 +364,17 @@ class Dispatcher:
                     await registry.discover()
                 prefix='sceneflow/'+job['project_id']+'/'+job['scene_id']+'/'+job['id']
                 image = None
+                async def upload_owned(identifier,expected_hash):
+                    row=db.one('SELECT * FROM assets WHERE id=? AND project_id=?',(identifier,job['project_id']))
+                    if not row or row['sha256']!=expected_hash:raise ValueError('A frozen input image no longer belongs to this project or has changed.')
+                    path=asset_path(identifier)
+                    with path.open('rb') as file:
+                        if hashlib.file_digest(file,'sha256').hexdigest()!=expected_hash:raise ValueError('A frozen input image changed on disk.')
+                    with path.open('rb') as file:response=await client.post(settings['comfy_url']+'/upload/image',files={'image':(job['id']+'-'+identifier+path.suffix,file)},data={'type':'input','overwrite':'false'})
+                    response.raise_for_status();uploaded=response.json()
+                    return (uploaded.get('subfolder','')+'/' if uploaded.get('subfolder') else '')+uploaded['name']
+                references=[await upload_owned(r['id'],r['sha256']) for r in snap.get('reference_assets',[])]
+                mask=await upload_owned(snap['mask_asset_id'],snap['mask_sha256']) if snap.get('mask_asset_id') else None
                 if job['kind']=='video':
                     source = db.one('SELECT * FROM assets WHERE id=?',(snap['source_asset_id'],))
                     path = asset_path(snap['source_asset_id'])
@@ -365,7 +387,8 @@ class Dispatcher:
                     response.raise_for_status()
                     uploaded=response.json()
                     image=(uploaded.get('subfolder','')+'/' if uploaded.get('subfolder') else '')+uploaded['name']
-                graph,entry=registry.build(snap['workflow_id'],snap,prefix,image)
+                if snap['workflow_id']=='qwen-image-21-reference' and not references:raise ValueError('Choose at least one reference image before generating with the reference workflow.')
+                graph,entry=registry.build(snap['workflow_id'],snap,prefix,image,references,mask)
                 import platform
                 from .config import VERSION
                 versions={'studio':VERSION,'python':platform.python_version()}
@@ -497,6 +520,7 @@ class Dispatcher:
             update_job(job['id'],'cancelled',progress=1,finished=now(),error='The output finished during cancellation and was preserved as an unselected take.');return
         update_job(job['id'],'completed',progress=1,finished=now(),error=None)
         registry.verified(snap['workflow_id'],{'job_id':job['id'],'asset_id':candidate['id'],'metadata':json.loads(candidate['metadata'])})
+        if snap.get('edit_operation'):return
         mode=project['settings'].get('qa_'+job['kind']+'_mode','every')
         should_review=project['settings'].get('qa_enabled') and project['settings'].get('qa_auto',True) and mode!='off'
         if should_review and mode=='selected' and snap.get('candidate_index',0)>0 and not snap.get('quality_retry'):

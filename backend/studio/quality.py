@@ -41,18 +41,22 @@ def samples(asset):
         with Image.open(path) as image:frames.append(image.convert('RGB').copy())
     else:
         duration=metadata['duration']
-        root=ROOT/'temp'/('qa-'+asset['id']);root.mkdir(parents=True,exist_ok=True)
-        for index,at in enumerate([0,duration*.5,max(0,duration-1/max(1,metadata['fps']))]):
+        root=ROOT/'temp'/('qa-'+asset['id']+'-'+uid());root.mkdir(parents=True,exist_ok=True)
+        last=max(0,duration-1/max(1,metadata['fps']))
+        times=[last*i/6 for i in range(7)]
+        for index,at in enumerate(times):
             target=root/f'{index}.png'
             run_tool([executable('ffmpeg'),'-y','-v','error','-ss',str(at),'-i',str(path),'-frames:v','1','-vf','scale=512:512:force_original_aspect_ratio=decrease',str(target)])
             with Image.open(target) as image:frames.append(image.convert('RGB').copy())
+            target.unlink(missing_ok=True)
+        root.rmdir()
     means=[];encoded=[];differences=[]
     for frame in frames:
         frame.thumbnail((512,512));means.append(sum(ImageStat.Stat(frame).mean)/3)
         buffer=io.BytesIO();frame.save(buffer,format='JPEG',quality=85);encoded.append(base64.b64encode(buffer.getvalue()).decode())
     for a,b in zip(frames,frames[1:]):
         differences.append(sum(ImageStat.Stat(ImageChops.difference(a,b.resize(a.size))).mean)/3)
-    technical={'decoded':True,'metadata':metadata,'sample_count':len(frames),'mean_sample_luminance':means,'sample_differences':differences,'dark_samples':sum(m<2 for m in means),'nearly_identical_samples':bool(differences and max(differences)<.3),'limits':'Three video samples cannot establish complete motion adherence, detect all flicker, or evaluate sound.'}
+    technical={'decoded':True,'metadata':metadata,'sample_count':len(frames),'sample_times':times if asset['kind']!='image' else [0],'mean_sample_luminance':means,'sample_differences':differences,'dark_samples':sum(m<2 for m in means),'nearly_identical_samples':bool(differences and max(differences)<.3),'abrupt_sample_changes':sum(d>55 for d in differences),'limits':'Seven evenly spaced video samples provide partial visual evidence. Dark, unchanged or abrupt samples can be intentional; these measurements do not certify full motion, all flicker, identity or sound.'}
     return encoded,technical
 
 
@@ -71,6 +75,9 @@ async def queue_review(asset_id,model=None,automatic=False):
     scene=db.scene(asset['scene_id']);generation=db.one('SELECT snapshot FROM jobs WHERE id=?',(asset['job_id'],)) if asset['job_id'] else None
     frozen=json.loads(generation['snapshot']) if generation else {}
     snapshot={'project_id':project['id'],'scene_id':scene['id'],'scene_title':scene['title'],'asset_id':asset_id,'asset_sha256':asset['sha256'],'model':model,'generation_job_id':asset['job_id'],'allow_actions':automatic,'scene_revision_id':json.loads(asset['metadata']).get('scene_revision_id',scene['revision_id']),'scene_brief':frozen.get('scene_brief',scene['body'].get('summary','')),'image_prompt':frozen.get('image_prompt',scene['body'].get('image_prompt','')),'video_prompt':frozen.get('video_prompt',scene['body'].get('video_prompt','')),'qa_policy':{k:copy.deepcopy(project['settings'].get(k)) for k in ['qa_rubric','qa_threshold','qa_regenerate','max_retries']}}
+    from .continuity import owned_references
+    reference_ids=frozen.get('reference_asset_ids',project['settings'].get('reference_asset_ids',[]))
+    snapshot.update(reference_assets=owned_references(db,project['id'],reference_ids),visual_rules=frozen.get('visual_rules',project['settings'].get('visual_rules','')))
     pause(project['id'],False)
     return queue_snapshot('qa',snapshot,automatic=automatic,force=not automatic,priority=0 if automatic else -20)
 
@@ -83,7 +90,7 @@ def threshold(policy):
 def retry_allowed(store,job,snapshot,score):
     policy=snapshot['qa_policy']
     if not policy.get('qa_regenerate'):return False
-    original=json.loads(job['snapshot']);kind=job['kind'];limit=min(2,max(0,int(policy.get('max_retries') or 2)))
+    original=json.loads(job['snapshot']);kind=job['kind'];value=policy.get('max_retries');limit=min(2,max(0,int(2 if value is None else value)))
     attempts=[j for j in store.jobs(job['project_id']) if j['scene_id']==job['scene_id'] and j['kind']==kind and j['snapshot'].get('quality_retry') and j['snapshot'].get('scene_revision_id')==original.get('scene_revision_id')]
     if len(attempts)>=limit:return False
     prior=store.all('SELECT q.body FROM qa q JOIN assets a ON a.id=q.asset_id WHERE a.scene_id=? AND a.kind=?',(job['scene_id'],kind))
@@ -142,10 +149,20 @@ async def execute(job,snapshot):
         update_job(job['id'],'running',started=now(),error=None)
         try:
             images,technical=await asyncio.to_thread(samples,asset)
-            prompt='Evaluate these actual images against the exact requested subjects, props, composition, lighting and style. Score 0 means total failure, 0.5 means a partial match, and 1 means a fully successful match with no material defects. Higher is better. Scores are advisory rubric values, not calibrated probabilities. Be critical of prompt mismatch. For video, the images are first, middle and last samples; they do not prove complete motion or audio. Do not claim to hear audio. Return the requested schema. Accept a strong match without major issues; recommend regenerate only for a low-scoring clear actionable failure. Use review for ambiguous cases. Your recommendation and scores must agree.'
+            reference_images=[]
+            for ref in snapshot.get('reference_assets',[]):
+                row=db.one("SELECT * FROM assets WHERE id=? AND project_id=? AND kind='image'",(ref['id'],asset['project_id']))
+                if not row or row['sha256']!=ref['sha256']:raise ValueError('A review reference changed ownership or hash.')
+                reference_path=asset_path(ref['id'])
+                with reference_path.open('rb') as file:
+                    if hashlib.file_digest(file,'sha256').hexdigest()!=ref['sha256']:raise ValueError('A review reference changed on disk.')
+                with Image.open(reference_path) as image:
+                    image=image.convert('RGB');image.thumbnail((512,512));buffer=io.BytesIO();image.save(buffer,format='JPEG',quality=85);reference_images.append(base64.b64encode(buffer.getvalue()).decode())
+            prompt='Evaluate the supplied actual images against the exact requested subjects, props, composition, lighting and style. Images begin with the approved reference images, followed by the candidate still or seven time-ordered video samples. Compare character face, silhouette, costume and colors to references. Identify which candidate frame or time supports each issue in its description. Score 0 means total failure, 0.5 means partial match, 1 means fully successful with no material defects. Scores are advisory, not calibrated probabilities. Video samples do not prove all motion or sound. Do not claim to hear audio. Accept a strong match without major issues; regenerate only for a low-scoring clear actionable failure. Use review for ambiguity. Scores and recommendation must agree.'
             creative={k:snapshot[k] for k in ['scene_brief','image_prompt','video_prompt']}
-            reviewed=await structured(client,snapshot['model'],[{'role':'system','content':prompt},{'role':'user','content':encode({'requirements':creative,'kind':asset['kind'],'rubric':snapshot['qa_policy'].get('qa_rubric') or 'balanced'}),'images':images}],Review,{'temperature':.15,'num_predict':2000})
+            reviewed=await structured(client,snapshot['model'],[{'role':'system','content':prompt},{'role':'user','content':encode({'requirements':creative,'kind':asset['kind'],'reference_count':len(reference_images),'sample_times':technical['sample_times'],'locked_visual_rules':snapshot.get('visual_rules',''),'rubric':snapshot['qa_policy'].get('qa_rubric') or 'balanced'}),'images':reference_images+images}],Review,{'temperature':.15,'num_predict':2000})
             result={**reviewed.model_dump(),'asset_id':asset['id'],'scene_revision_id':snapshot['scene_revision_id'],'qa_model':snapshot['model'],'technical_integrity':True,'technical':technical,'advisory':True}
+            result['reference_assets']=snapshot.get('reference_assets',[])
             if result['recommendation']=='regenerate' and (result['overall_score']>=threshold(snapshot['qa_policy']) or not any(i['severity'] in ['medium','high'] for i in result['issues'])):
                 result['raw_recommendation']=result['recommendation'];result['recommendation']='review';result['consistency_note']='The model recommendation conflicts with its score or actionable issues. Human review is required.'
             db.execute('INSERT INTO qa VALUES(?,?,?,?,?)',(uid(),asset['id'],snapshot['model'],encode(result),now()))

@@ -163,6 +163,7 @@ async def project_list(session=Depends(require_session)):
 @app.post('/api/projects')
 async def create_project(body: ProjectInput, session=Depends(require_session)):
     project_settings(body.settings)
+    if body.settings.get('reference_asset_ids'):raise ValueError('Create the project before importing its visual references.')
     validate_workflows(body.settings)
     return db.create_project(**body.model_dump())
 
@@ -180,6 +181,9 @@ async def project(identifier: str, session=Depends(require_session)):
 async def edit_project(identifier: str, body: ProjectEdit, session=Depends(require_session)):
     if body.settings:
         project_settings(body.settings)
+        from .continuity import owned_references,visual_inputs
+        visual_inputs({'body':{}},{'settings':body.settings},'image')
+        owned_references(db,identifier,body.settings.get('reference_asset_ids',[]))
         validate_workflows(body.settings)
         merged={**db.project(identifier)['settings'],**body.settings}
         if merged.get('qa_enabled'):
@@ -204,6 +208,8 @@ async def edit_project(identifier: str, body: ProjectEdit, session=Depends(requi
 @app.post('/api/projects/{identifier}/scenes')
 async def add_scene(identifier: str, body: SceneInput, session=Depends(require_session)):
     scene_body(body.body)
+    from .continuity import owned_references
+    owned_references(db,identifier,body.body.get('reference_asset_ids',[]))
     validate_workflows(body.body)
     return db.add_scene(identifier, body.title, body.body)
 
@@ -211,6 +217,8 @@ async def add_scene(identifier: str, body: SceneInput, session=Depends(require_s
 @app.patch('/api/scenes/{identifier}')
 async def edit_scene(identifier: str, body: SceneEdit, session=Depends(require_session)):
     scene_body(body.body)
+    from .continuity import owned_references
+    owned_references(db,db.scene(identifier)['project_id'],(body.body or {}).get('reference_asset_ids',[]))
     validate_workflows(body.body or {})
     result=db.update_scene(identifier, body.revision, body.title, body.body)
     from .production import supersede_pending
@@ -297,6 +305,8 @@ from .routes_director import router as director_router
 app.include_router(director_router)
 from .routes_editing import router as editing_router
 app.include_router(editing_router)
+from .continuity import router as continuity_router
+app.include_router(continuity_router)
 
 
 @app.get('/{path:path}')

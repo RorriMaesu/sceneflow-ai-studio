@@ -11,8 +11,9 @@
 | Audio (11, 18–19) | Silent/preserved/mixed sound, music/voice/effects, placement, trims, fades, ducking and exact-job sidecars | Synthetic audio integration tests; local LTX generation unconfigured |
 | Timeline and loops (18–19) | Explicit playback order; trim/split/duplicate/remove/speed/replacement; cuts/fades/dissolves; loops; frozen exports | Pixel-labeled order test; browser split/save/restore; full decode/probe; real eight-scene loop movie |
 | Backup and recovery (23–24) | Bundles, hash checks, new IDs, paused restores, quarantine, path/reference checks and private diagnostics | Media-backed restore tests; traversal rejection; original project preserved |
+| References and correction (9, 12) | Visual bible, up to three owned image references, immutable hashes, masked source-latent correction, brush undo/zoom, before/after and candidate comparison | Four real reference stills; refined local correction; unchanged outside-mask pixels verified |
 | Optional QA (34–35, 39) | Off by default; local vision discovery; sampled frames; separate technical results; bounded retries; manual precedence; contradictory-advice guard | Real still and three-frame video reviews; simulated retries/overrides; advisory scores |
-| Advanced workflows (11–12, 17) | Capability explanations and guarded import mechanism | LTX audio/conditioning, ending-keyframe controls, masked editing, outpainting, neural upscaling and specialized video editing require separate configuration/verification |
+| Advanced workflows (11–12, 17) | Capability explanations and guarded import mechanism | LTX audio/conditioning, ending-keyframe controls, outpainting, neural upscaling and specialized video editing require separate configuration/verification |
 | Delivery (25–29) | Source, setup/start/stop scripts, deployment, tests, architecture, evidence and troubleshooting | Private two-scene proof and complete eight-scene movie; per-phase Pages deployments |
 
 Installed filenames, ready graphs, AI scores and started deployments are kept distinct from successful generation and verified releases.

@@ -3,6 +3,7 @@ import math
 
 def project_settings(values):
     if not isinstance(values,dict):raise ValueError('Project settings must be an object.')
+    if 'visual_rules' in values and (not isinstance(values['visual_rules'],str) or len(values['visual_rules'])>6000):raise ValueError('Keep locked visual rules under 6000 characters.')
     bounds={'scene_count':(1,40),'width':(64,2048),'height':(64,2048),'fps':(1,60),'frames':(1,241),'image_steps':(1,60),'candidates':(1,4),'max_retries':(0,2),'qa_threshold':(0,1)}
     for key,(low,high) in bounds.items():
         if key in values and (not isinstance(values[key],(int,float)) or isinstance(values[key],bool) or not math.isfinite(values[key]) or not low<=values[key]<=high):
@@ -16,7 +17,7 @@ def project_settings(values):
         if key in values and values[key] not in options:raise ValueError('Unsupported '+key)
     if 'gates' in values and (not isinstance(values['gates'],dict) or set(values['gates'])-{'storyboard','prompts','image','video','timeline'} or any(not isinstance(v,bool) for v in values['gates'].values())):
         raise ValueError('Review gates must use the supported stage names and on/off values.')
-    for key in ['style_guide','synopsis','characters']:
+    for key in ['style_guide','synopsis','characters','visual_rules']:
         if key in values and len(str(values[key]))>12000:raise ValueError('Creative context exceeds the supported length.')
     return values
 

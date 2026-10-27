@@ -2162,3 +2162,99 @@ main {
 .settings-panel .upload-label input {
   max-width: 230px;
 }
+.visual-bible {
+  margin: 18px 0;
+}
+.visual-bible summary,
+.correction-panel summary,
+.candidate-review summary {
+  cursor: pointer;
+  font-weight: 650;
+  padding: 12px 0;
+}
+.visual-bible > p,
+.correction-panel > p,
+.candidate-review > p {
+  color: #aaa8b9;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.reference-grid,
+.candidate-grid,
+.comparison-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+.reference-card {
+  border: 1px solid #363141;
+  border-radius: 12px;
+  padding: 10px;
+  overflow: hidden;
+}
+.reference-card.selected {
+  border-color: #b69afd;
+  background: #a885ec12;
+}
+.reference-card img,
+.candidate-grid img,
+.comparison-pair img {
+  width: 100%;
+  height: 140px;
+  object-fit: contain;
+  background: #08080c;
+  border-radius: 8px;
+}
+.reference-card span {
+  font-size: 11px;
+  display: block;
+  margin-top: 8px;
+}
+.correction-panel,
+.candidate-review {
+  border-top: 1px solid #34303e;
+  margin: 12px 0;
+}
+.correction-scroll {
+  max-width: 100%;
+  height: 320px;
+  overflow: auto;
+  background: #08080c;
+  border: 1px solid #40384e;
+  border-radius: 10px;
+}
+.correction-surface {
+  position: relative;
+  min-width: 240px;
+  max-width: none;
+}
+.correction-surface img,
+.correction-surface canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}
+.correction-surface canvas {
+  touch-action: none;
+  mix-blend-mode: screen;
+  opacity: 0.55;
+  cursor: crosshair;
+}
+.correction-panel input[type="range"] {
+  max-width: 160px;
+}
+.candidate-grid article {
+  border: 1px solid #363141;
+  border-radius: 10px;
+  padding: 10px;
+}
+.correction-panel .button-row {
+  flex-wrap: wrap;
+}
+.comparison-pair {
+  grid-template-columns: 1fr 1fr;
+}
+.correction-expanded{position:fixed;inset:28px;z-index:90;background:#141219;border:1px solid #716084;border-radius:18px;padding:24px;overflow:auto;box-shadow:0 20px 100px #000b}.correction-expanded .correction-scroll{height:min(55vh,550px)}.correction-expanded .comparison-pair img{height:240px}.correction-expanded summary{font-size:20px}

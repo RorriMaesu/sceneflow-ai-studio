@@ -119,6 +119,18 @@ def add_asset(project_id, scene_id, job_id, kind, incoming, source_asset_id=None
     if job_id and kind in ['image','video']:
         job=db.one('SELECT snapshot FROM jobs WHERE id=?',(job_id,))
         expected=json.loads(job['snapshot']) if job else {}
+        if expected.get('mask_asset_id'):
+            from PIL import ImageChops
+            source=asset_path(expected['source_asset_id']);mask_path=asset_path(expected['mask_asset_id'])
+            for original,hash_key in [(source,'source_sha256'),(mask_path,'mask_sha256')]:
+                with original.open('rb') as file:
+                    if hashlib.file_digest(file,'sha256').hexdigest()!=expected[hash_key]:raise ValueError('An edit source changed during generation.')
+            with Image.open(source) as original,Image.open(mask_path) as mask_image,Image.open(temporary) as corrected:
+                if original.size!=corrected.size or original.size!=mask_image.size:raise ValueError('Masked correction dimensions changed.')
+                outside=mask_image.convert('L').point(lambda x:255 if x==0 else 0)
+                difference=ImageChops.multiply(ImageChops.difference(original.convert('RGB'),corrected.convert('RGB')),outside.convert('RGB'))
+                if difference.getbbox():raise ValueError('The correction changed pixels outside the painted area; the original is preserved.')
+                metadata['outside_mask_unchanged']=True
         if all(k in expected for k in ['width','height']) and (metadata.get('width')!=expected['width'] or metadata.get('height')!=expected['height']):
             raise ValueError('Generated dimensions do not match the frozen workflow request.')
         if kind=='video' and 'frames' in expected and (abs(metadata.get('frames',0)-expected['frames'])>1 or abs(metadata.get('fps',0)-expected['fps'])>.1):
@@ -146,6 +158,7 @@ def select_asset(identifier, approve=False):
         raise KeyError('Asset not found')
     if row['kind'] not in ['image','video'] or not row['scene_id']:
         raise ValueError('Select a scene image or video take.')
+    if json.loads(row['metadata']).get('role')=='edit_mask':raise ValueError('An editing mask cannot be selected as a scene take.')
     asset_path(identifier)
     field = 'selected_image_id' if row['kind']=='image' else 'selected_video_id'
     from .production import stage_signature
@@ -204,7 +217,8 @@ async def collect_outputs(client, job, result, entry):
                     async for chunk in response.aiter_bytes(1024*1024):
                         file.write(chunk)
             import asyncio
-            asset = await asyncio.to_thread(add_asset, job['project_id'], job['scene_id'], job['id'], kind, path, snapshot.get('source_asset_id'), {'comfy_prompt_id': job['comfy_prompt_id'], 'scene_revision_id': snapshot['scene_revision_id'], 'workflow_hash': snapshot['workflow_hash'], 'submitted_workflow_hash':provenance.get('workflow_hash'),'software':provenance.get('software',{}),'output_reference':{'node':str(key),**params}, 'source_sha256': snapshot.get('source_sha256')})
+            provenance_inputs={k:snapshot[k] for k in ['reference_assets','mask_asset_id','mask_sha256','edit_operation'] if k in snapshot}
+            asset = await asyncio.to_thread(add_asset, job['project_id'], job['scene_id'], job['id'], kind, path, snapshot.get('source_asset_id'), {'comfy_prompt_id': job['comfy_prompt_id'], 'scene_revision_id': snapshot['scene_revision_id'], 'workflow_hash': snapshot['workflow_hash'], 'submitted_workflow_hash':provenance.get('workflow_hash'),'software':provenance.get('software',{}),'output_reference':{'node':str(key),**params}, 'source_sha256': snapshot.get('source_sha256'),**provenance_inputs})
             collected.append(asset)
             path.unlink(missing_ok=True)
     if not any(a['kind']==job['kind'] for a in collected):

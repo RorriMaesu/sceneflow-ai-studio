@@ -138,9 +138,13 @@ async def media_ticket(identifier:str,session=Depends(require_session)):
 
 
 @router.get('/media/{identifier}')
-async def media(identifier:str,request:Request,ticket:str=''):
+async def media(identifier:str,request:Request,ticket:str='',thumbnail:bool=False):
     verify_ticket(ticket,'media',identifier,origin=request.headers.get('origin'))
-    return FileResponse(asset_path(identifier),filename=None,headers={'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer'})
+    path=asset_path(identifier)
+    if thumbnail:
+        candidate=path.with_suffix('.thumbnail.jpg').resolve()
+        if candidate.is_relative_to((ROOT/'projects').resolve()) and candidate.is_file():path=candidate
+    return FileResponse(path,filename=None,headers={'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer'})
 
 
 @router.post('/scenes/{identifier}/import')
