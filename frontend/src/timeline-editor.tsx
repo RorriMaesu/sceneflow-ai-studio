@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { request, upload } from "./api";
 import { TimelinePreview, AudioWaveform } from "./timeline-preview";
 import type { Asset, Project } from "./types";
+import {useRecoverableDraft,DraftNotice} from "./recoverable-draft";
 
 export function TimelineEditor({
   project,
@@ -13,15 +14,13 @@ export function TimelineEditor({
   act: any;
   renderMedia: (a?: Asset) => React.ReactNode;
 }) {
-  const [value, setValue] = useState<any>(project.timeline);
-  const [revision, setRevision] = useState(project.timeline.revision);
-  const [dirty, setDirty] = useState(false);
-  const [zoom, setZoom] = useState(1);
-  const [past, setPast] = useState<any[]>([]);
-  const [future, setFuture] = useState<any[]>([]);
-  const dragged = useRef<number | null>(null);
-  const saved=useRef(project.timeline);
-  useEffect(()=>{setDirty(JSON.stringify(value)!==JSON.stringify(saved.current))},[value]);
+  const draft=useRecoverableDraft('timeline.'+project.id,project.timeline,project.timeline.revision,v=>Array.isArray(v?.clips)&&Array.isArray(v?.audio)&&!!v?.settings);
+  const {value,setValue,dirty}=draft;
+  const revision=draft.revision;
+  const [zoom,setZoom]=useState(1);
+  const [past,setPast]=useState<any[]>([]);
+  const [future,setFuture]=useState<any[]>([]);
+  const dragged=useRef<number|null>(null);
   const assets = useQuery<Asset[]>({
     queryKey: ["project-assets", project.id],
     queryFn: () => request("/api/assets?project_id=" + project.id),
@@ -32,18 +31,10 @@ export function TimelineEditor({
     queryFn: () => request(`/api/projects/${project.id}/timeline/history`),
     refetchInterval: 10000,
   });
-  useEffect(() => {
-    if (!dirty && project.timeline.revision !== revision) {
-      saved.current=project.timeline;
-      setValue(project.timeline);
-      setRevision(project.timeline.revision);
-    }
-  }, [project.timeline.revision, dirty]);
   const change = (next: any) => {
     setPast((p) => [...p.slice(-49), value]);
     setFuture([]);
     setValue(next);
-    setDirty(true);
   };
   const clip = (index: number, changes: any) =>
     change({
@@ -68,10 +59,7 @@ export function TimelineEditor({
       ),
     });
   const adopt = (v: any) => {
-    saved.current=v;
-    setValue(v);
-    setRevision(v.revision);
-    setDirty(false);
+    draft.adopt(v,v.revision);
     setPast([]);
     setFuture([]);
     history.refetch();
@@ -82,6 +70,7 @@ export function TimelineEditor({
   );
   return (
     <section className="panel timeline-editor">
+      <DraftNotice draft={draft}/>
       <div className="section-heading">
         <div>
           <h2>Your final cut</h2>
@@ -94,6 +83,7 @@ export function TimelineEditor({
         <div className="button-row">
           <button
             className="button"
+            disabled={dirty}
             onClick={() =>
               act(
                 async () =>
@@ -111,7 +101,7 @@ export function TimelineEditor({
               )
             }
           >
-            Build from selected takes
+            Build from chosen clips
           </button>
           <button
             className="button"
@@ -120,8 +110,7 @@ export function TimelineEditor({
               setFuture((f) => [value, ...f]);
               setValue(past[past.length - 1]);
               setPast((p) => p.slice(0, -1));
-              setDirty(true);
-            }}
+                      }}
           >
             Undo
           </button>
@@ -132,14 +121,13 @@ export function TimelineEditor({
               setPast((p) => [...p, value]);
               setValue(future[0]);
               setFuture((f) => f.slice(1));
-              setDirty(true);
-            }}
+                      }}
           >
             Redo
           </button>
           <button
             className="button primary"
-            disabled={!dirty || !value.clips.length}
+            disabled={!dirty || draft.conflict || !value.clips.length}
             onClick={() =>
               act(
                 async () =>
@@ -154,7 +142,7 @@ export function TimelineEditor({
               )
             }
           >
-            Save timeline
+            Save edits
           </button>
         </div>
       </div>

@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { request, upload, useConnection } from "./api";
 import type { Asset, Project, Scene } from "./types";
 import { AssetQuality } from "./quality-panel";
+import {useRecoverableDraft,DraftNotice} from "./recoverable-draft";
 
 export function SceneKeyframes({
   scene,
@@ -94,19 +95,10 @@ export function VisualBible({
     queryFn: () => request("/api/assets?project_id=" + project.id),
     refetchInterval: 15000,
   });
-  const [chosen, setChosen] = useState<string[]>(
-    project.settings.reference_asset_ids || [],
-  );
-  const [rules, setRules] = useState(project.settings.visual_rules || "");
-  const [base, setBase] = useState(project.revision);
-  const [dirty, setDirty] = useState(false);
-  useEffect(() => {
-    if (!dirty) {
-      setChosen(project.settings.reference_asset_ids || []);
-      setRules(project.settings.visual_rules || "");
-      setBase(project.revision);
-    }
-  }, [project.revision, dirty]);
+  const draft=useRecoverableDraft('look.'+project.id,{chosen:project.settings.reference_asset_ids||[],rules:project.settings.visual_rules||''},project.revision,v=>Array.isArray(v?.chosen)&&typeof v?.rules==='string');
+  const {chosen,rules}=draft.value;const dirty=draft.dirty,base=draft.revision;
+  const setChosen=(chosen:string[])=>draft.setValue(v=>({...v,chosen}));
+  const setRules=(rules:string)=>draft.setValue(v=>({...v,rules}));
   const images =
     assets.data?.filter(
       (a) => a.kind === "image" && a.metadata.role !== "edit_mask",
@@ -117,6 +109,7 @@ export function VisualBible({
         Visual bible · references & locked appearance{" "}
         {chosen.length ? `· ${chosen.length} selected` : ""}
       </summary>
+      <DraftNotice draft={draft}/>
       <p>
         Choose up to three approved images to guide every new still. Image 1
         sets the initial framing. The original files and their hashes stay
@@ -130,7 +123,6 @@ export function VisualBible({
           value={rules}
           onChange={(e) => {
             setRules(e.target.value);
-            setDirty(true);
           }}
           placeholder="Character silhouette, face, costume, colors, lighting and details that must stay the same."
         />
@@ -171,10 +163,9 @@ export function VisualBible({
                   setChosen(
                     e.target.checked
                       ? [...chosen, a.id]
-                      : chosen.filter((id) => id !== a.id),
+                      : chosen.filter((id:string) => id !== a.id),
                   );
-                  setDirty(true);
-                }}
+                      }}
               />{" "}
               {chosen.includes(a.id)
                 ? `Reference ${chosen.indexOf(a.id) + 1}`
@@ -196,10 +187,10 @@ export function VisualBible({
       </p>
       <button
         className="button primary"
-        disabled={!dirty}
+        disabled={!dirty||draft.conflict}
         onClick={() =>
           act(async () => {
-            await request(
+            const p=await request(
               `/api/projects/${project.id}`,
               {
                 revision: base,
@@ -207,7 +198,7 @@ export function VisualBible({
               },
               "PATCH",
             );
-            setDirty(false);
+            draft.adopt({chosen:p.settings.reference_asset_ids||[],rules:p.settings.visual_rules||''},p.revision);
           }, "Visual bible saved. Future jobs use the new references and rules.")
         }
       >

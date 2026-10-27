@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { request } from "./api";
 import type { Project, Workflow } from "./types";
+import {useRecoverableDraft,DraftNotice} from "./recoverable-draft";
 
 export function ProductionSettings({
   project,
@@ -14,10 +15,10 @@ export function ProductionSettings({
   models: any[];
   act: any;
 }) {
-  const [values, setValues] = useState(project.settings);
-  const [dirty, setDirty] = useState(false);
-  const [base, setBase] = useState(project.revision);
-  const [brief, setBrief] = useState(project.brief);
+  const draft=useRecoverableDraft('settings.'+project.id,{settings:project.settings,brief:project.brief},project.revision,v=>!!v?.settings&&typeof v?.brief==='string');
+  const values=draft.value.settings,brief=draft.value.brief,dirty=draft.dirty,base=draft.revision;
+  const setValues=(next:import('react').SetStateAction<typeof values>)=>draft.setValue(v=>({...v,settings:typeof next==='function'?next(v.settings):next}));
+  const setBrief=(brief:string)=>draft.setValue(v=>({...v,brief}));
   const available = useQuery<any[]>({
     queryKey: ["vision-models"],
     queryFn: () => request("/api/language-models"),
@@ -25,20 +26,13 @@ export function ProductionSettings({
   });
   const set = (key: string, value: any) => {
     setValues((v) => ({ ...v, [key]: value }));
-    setDirty(true);
   };
-  useEffect(() => {
-    if (!dirty) {
-      setValues(project.settings);
-      setBase(project.revision);
-      setBrief(project.brief);
-    }
-  }, [project.revision, dirty]);
   return (
     <details className="panel production-settings">
       <summary>
         Production settings · models, approvals & creative brief
       </summary>
+      <DraftNotice draft={draft}/>
       <div className="settings-grid">
         <label>
           Creative brief
@@ -47,8 +41,7 @@ export function ProductionSettings({
             value={brief}
             onChange={(e) => {
               setBrief(e.target.value);
-              setDirty(true);
-            }}
+                    }}
           />
         </label>
         <label>
@@ -130,8 +123,7 @@ export function ProductionSettings({
               };
               if (presets[e.target.value]) {
                 setValues((v) => ({ ...v, ...presets[e.target.value] }));
-                setDirty(true);
-              }
+                        }
             }}
           >
             <option value="">Choose a preset or keep custom settings</option>
@@ -340,6 +332,7 @@ export function ProductionSettings({
       <div className="button-row">
         <button
           className="button primary"
+          disabled={!dirty||draft.conflict}
           onClick={() =>
             act(async () => {
               const p = await request(
@@ -347,9 +340,7 @@ export function ProductionSettings({
                 { revision: base, brief, settings: values },
                 "PATCH",
               );
-              setValues(p.settings);
-              setBase(p.revision);
-              setDirty(false);
+              draft.adopt({settings:p.settings,brief:p.brief},p.revision);
             }, "Production settings saved.")
           }
         >

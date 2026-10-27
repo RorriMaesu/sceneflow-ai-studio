@@ -72,6 +72,7 @@ import { TimelineEditor } from "./timeline-editor";
 import { BackupPanel, WorkflowImporter, SceneHistory } from "./tools-panels";
 import { AssetQuality } from "./quality-panel";
 import { ProductionInsights } from "./production-insights";
+import {ProjectStatus} from "./project-status";
 import { MaintenancePanel } from "./maintenance-panel";
 import {
   ReadinessCoach,
@@ -105,14 +106,14 @@ const MODES: { id: Mode; name: string; description: string }[] = [
   {
     id: "automatic",
     name: "Autopilot",
-    description: "Let the studio produce your story.",
+    description: "Autopilot creates your scenes and continues automatically. You can pause or review any result.",
   },
   {
     id: "hybrid",
     name: "Assisted",
-    description: "Keep creating while the studio works.",
+    description: "Assisted creates your video and waits at your chosen review points.",
   },
-  { id: "manual", name: "Manual", description: "Direct every stage yourself." },
+  { id: "manual", name: "Manual", description: "Manual starts only the work you request." },
 ];
 const fmt = (n: number) => (n ? `${(n / 1073741824).toFixed(1)} GB` : "—");
 const short = (s: string) =>
@@ -502,6 +503,7 @@ function Studio() {
         : "Jobs added to the production queue.",
     );
   }
+  useEffect(()=>{window.scrollTo(0,0);const heading=document.querySelector<HTMLElement>("main h1, main h2");if(heading){heading.tabIndex=-1;heading.focus({preventScroll:true});}},[page,active]);
   const go = (next: string) => {
     setPage(next);
     setSidebar(false);
@@ -525,7 +527,7 @@ function Studio() {
           </span>
         </a>
         <div className="workspace-label">
-          PERSONAL WORKSPACE <ChevronDown size={13} />
+          YOUR LOCAL STUDIO
         </div>
         <nav>
           {["workspace", "production", "studio"].map((group) => (
@@ -536,6 +538,7 @@ function Studio() {
                   key={label}
                   onClick={() => go(label)}
                   className={`nav-item ${page === label ? "active" : ""}`}
+                  aria-current={page===label?"page":undefined}
                 >
                   <Icon size={18} />
                   <span>{label}</span>
@@ -585,8 +588,8 @@ function Studio() {
               onClick={() => setSearchOpen(true)}
             >
               <Search size={15} />
-              <span>Find your next frame</span>
-              <kbd>⌘ K</kbd>
+              <span>Search projects and tools</span>
+              <kbd>Ctrl K</kbd>
             </button>
             <span className="local-tag">
               <Monitor size={13} /> LOCAL FIRST
@@ -664,11 +667,7 @@ function Studio() {
                         </Button>
                         <Button
                           onClick={() => {
-                            if (project) go("AI Director");
-                            else
-                              connection.token
-                                ? setNewOpen(true)
-                                : setPairOpen(true);
+                            connection.token ? setNewOpen(true) : setPairOpen(true);
                           }}
                         >
                           <Sparkles size={16} />
@@ -948,6 +947,7 @@ function Studio() {
                           title={m.description}
                           key={m.id}
                           className={project.mode === m.id ? "selected" : ""}
+                          aria-pressed={project.mode===m.id}
                           onClick={() => modeChange(m.id)}
                         >
                           {m.id === "automatic" ? (
@@ -962,6 +962,7 @@ function Studio() {
                       ))}
                     </div>
                   </div>
+                  <ProjectStatus project={project} jobs={jobs} act={act}/>
                   <div className="production-controls">
                     <div>
                       <Badge tone="violet">
@@ -1002,18 +1003,7 @@ function Studio() {
                           ? "Generate all"
                           : "Auto Produce"}
                       </Button>
-                      <Button
-                        onClick={() =>
-                          act(
-                            () =>
-                              request(`/api/projects/${project.id}/pause`, {}),
-                            "The active job can finish; new jobs will wait.",
-                          )
-                        }
-                        disabled={featurePhase < 2}
-                      >
-                        <Pause size={15} aria-label="Pause new jobs" />
-                      </Button>
+
                     </div>
                   </div>
                   <VisualBible

@@ -2374,3 +2374,28 @@ main {
   margin: 15vh auto;
   padding: 30px;
 }
+
+/* Readable defaults and persistent, explicit work/save states. */
+:root { font-size:16px; --muted:#afb2c0; }
+p { line-height:1.55; }
+.button,.nav-item,.mode-switch button,.inspector-tabs button { font-size:14px; min-height:44px; }
+.icon-button { min-width:44px; min-height:44px; }
+.nav-label,.release-label,.workspace-label,.brand-sub { font-size:11px; }
+.sidebar { overflow-y:auto; }
+.back-link,.text-link { font-size:14px; min-height:36px; }
+.project-card-info h3,.scene-title-row h3 { font-size:16px; }
+.project-card-info>span,.scene-card-footer,.scene-card-footer span,.badge,.revision-note { font-size:12px; }
+.project-card-info>span,.status-card small,.revision-note,.section-heading p,.production-heading p,.production-controls .muted { color:#afb2c0; }
+.section-heading p,.production-heading p,.status-card strong,.status-card-top,.inspector-content label,.inspector-content input,.inspector-content textarea,.inspector-content select { font-size:14px; }
+.inspector-header>span,.tiny-label,.eyebrow { font-size:12px; }
+label { font-size:14px; }
+input,textarea,select { font-size:16px; }
+.search-button { font-size:14px; }
+.project-status { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:18px 22px; background:#1d2430; border-left:4px solid #bca2ff; border-radius:8px; margin:16px 0; }
+.project-status p { color:#c5cad8; font-size:14px; margin-top:5px; }
+.project-status .button { flex-shrink:0; }
+.draft-notice { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:10px; margin:12px 0 18px; font-size:14px; color:#a6d8bf; }
+.draft-warning { color:#ffd6a0; }
+.draft-notice .button { font-size:13px; }
+.production-controls .button-row { flex-wrap:wrap; }
+@media(max-width:780px){.project-status{align-items:stretch;flex-direction:column}.production-controls .button,.mode-switch button{font-size:14px}.project-grid{grid-template-columns:1fr}}

@@ -11,12 +11,12 @@ export function ProductionInsights({ project }: { project: Project }) {
   const data = result.data;
   return (
     <details className="panel">
-      <summary>{data?.production.paused ? "Production paused" : "Production ready"} · observed timings</summary>
+      <summary>Timing details · measured on this computer</summary>
       <p>
         <strong>
           AI quality control: {project.settings.qa_enabled ? "On" : "Off"}
         </strong>{" "}
-        · {data?.production.paused ? "New jobs paused" : "Ready for new jobs"}
+        · {data ? (data.production.paused ? "New automatic work paused" : "Production can continue") : "Checking status…"}
       </p>
       {data?.run?.reason && <p role="status">{data.run.reason}</p>}
       <p>
