@@ -17,6 +17,7 @@ export const PAGE_NAMES: Record<string, string> = {
   "AI Director": "Ask the Director",
   "Model Library": "Advanced tools",
   Settings: "Settings",
+  Setup: "Setup & downloads",
   Help: "Help",
 };
 export const photo = (s: Scene) =>

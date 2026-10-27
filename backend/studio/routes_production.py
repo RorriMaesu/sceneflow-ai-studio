@@ -175,7 +175,8 @@ async def media(identifier:str,request:Request,ticket:str='',thumbnail:bool=Fals
     path=asset_path(identifier)
     if thumbnail:
         candidate=path.with_suffix('.thumbnail.jpg').resolve()
-        if candidate.is_relative_to((ROOT/'projects').resolve()) and candidate.is_file():path=candidate
+        from .storage import reject_links
+        if candidate.parent==path.parent and candidate.is_file():path=reject_links(candidate)
     return FileResponse(path,filename=None,headers={'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer'})
 
 

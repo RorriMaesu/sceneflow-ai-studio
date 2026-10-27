@@ -2,7 +2,7 @@
 
 A local filmmaking studio for planning scenes, generating starting stills, animating their exact images, reviewing takes and assembling a movie. The public React interface connects to an authenticated Windows agent on your computer.
 
-**Release 0.12 — guided creation and easy finishing.** Five clear steps take you through Story, Look & photos, Motion, Edit and Save video. Protected drafts survive navigation/reloads, work status and scope stay visible, scene versions are easier to choose, and finished MP4 files can be downloaded directly. [Usability release evidence](docs/USABILITY_RELEASES.md).
+**Release 0.13 — guided setup and verified downloads.** Setup & downloads helps you choose folders and add only the creation tools you need. Exact download sizes, pinned versions, integrity checks, pause/resume and visible qualification states protect the existing studio. [Full studio release ledger](docs/FULL_SUITE_RELEASES.md). The five-step video workflow, protected drafts and direct MP4 downloads remain available. [Usability release evidence](docs/USABILITY_RELEASES.md).
 
 - [Published interface](https://rorrimaesu.github.io/sceneflow-ai-studio/)
 - [Verification ledger](docs/EVIDENCE.md)

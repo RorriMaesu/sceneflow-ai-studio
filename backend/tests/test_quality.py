@@ -10,7 +10,7 @@ from studio.store import Store,encode,now,uid
 
 @pytest.fixture
 def quality(tmp_path,monkeypatch):
-    store=Store(tmp_path/'quality.sqlite');modules={n:importlib.import_module('studio.'+n) for n in ['quality','media','production']}
+    store=Store(tmp_path/'quality.sqlite');modules={n:importlib.import_module('studio.'+n) for n in ['quality','media','production','storage']}
     for module in modules.values():
         monkeypatch.setattr(module,'db',store)
         if hasattr(module,'ROOT'):monkeypatch.setattr(module,'ROOT',tmp_path)

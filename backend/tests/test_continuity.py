@@ -10,7 +10,7 @@ from studio.store import Store,encode,now,uid
 
 @pytest.fixture
 def visual(tmp_path,monkeypatch):
-    store=Store(tmp_path/'visual.sqlite');modules={n:importlib.import_module('studio.'+n) for n in ['continuity','production','adapters','media','quality']}
+    store=Store(tmp_path/'visual.sqlite');modules={n:importlib.import_module('studio.'+n) for n in ['continuity','production','adapters','media','quality','storage']}
     for module in modules.values():
         monkeypatch.setattr(module,'db',store)
         if hasattr(module,'ROOT'):monkeypatch.setattr(module,'ROOT',tmp_path)

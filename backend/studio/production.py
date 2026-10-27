@@ -301,7 +301,8 @@ class Dispatcher:
         db.execute("UPDATE director_commands SET status='needs_attention',error='Agent restarted during a reviewed command. Inspect queued work before requesting it again.' WHERE status='running'")
         db.execute("UPDATE jobs SET status='needs_attention',error='Agent restarted during a local AI request. Review any saved proposal before explicitly retrying.' WHERE status='running' AND kind IN ('plan','director','qa')")
         for job in db.all("SELECT id FROM jobs WHERE status='running' AND kind='export'"):
-            marker=ROOT/'temp'/('export-'+job['id'])/'worker.json'
+            from .storage import export_folder
+            marker=export_folder(job['id'])/'worker.json'
             try:
                 if marker.exists():
                     owner=json.loads(marker.read_text(encoding='utf-8'));process=psutil.Process(owner['pid'])

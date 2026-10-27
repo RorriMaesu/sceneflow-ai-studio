@@ -14,7 +14,7 @@ def connected(tmp_path, monkeypatch):
     store = Store(tmp_path / 'test.sqlite')
     monkeypatch.setattr(application, 'db', store)
     monkeypatch.setattr(security, 'db', store)
-    for name in ['production','media','exports','adapters','routes_production','director','routes_director','routes_editing','editing_export','bundles','quality','diagnostics','continuity','insights']:
+    for name in ['production','media','exports','adapters','routes_production','director','routes_director','routes_editing','editing_export','bundles','quality','diagnostics','continuity','insights','storage','model_library','routes_setup']:
         module=importlib.import_module('studio.'+name)
         monkeypatch.setattr(module,'db',store)
     importlib.import_module('studio.production').migrate()

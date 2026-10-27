@@ -16,7 +16,8 @@ TABLES={'scenes':'project_id','scene_revisions':'scene_id','jobs':'project_id','
 def create_bundle(project_id):
     project=db.one('SELECT * FROM projects WHERE id=?',(project_id,))
     if not project:raise KeyError('Project not found')
-    identifier=uid();destination=ROOT/'backups'/(identifier+'.sceneflow.zip');temporary=destination.with_suffix('.part')
+    from .storage import role_folder
+    identifier=uid();destination=role_folder('backups')/(identifier+'.sceneflow.zip');temporary=destination.with_suffix('.part')
     # One SQLite read transaction gives a consistent snapshot while the dispatcher works.
     with db.connect() as con:
         con.execute('BEGIN')

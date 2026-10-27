@@ -14,7 +14,7 @@ def editor(tmp_path,monkeypatch):
     if not shutil.which('ffmpeg') or not shutil.which('ffprobe'):
         pytest.skip('FFmpeg and FFprobe are needed for media integration tests')
     store=Store(tmp_path/'editing.sqlite')
-    modules={n:importlib.import_module('studio.'+n) for n in ['exports','editing_export','media','production','bundles']}
+    modules={n:importlib.import_module('studio.'+n) for n in ['exports','editing_export','media','production','bundles','storage']}
     for module in modules.values():
         monkeypatch.setattr(module,'db',store)
         if hasattr(module,'ROOT'):monkeypatch.setattr(module,'ROOT',tmp_path)

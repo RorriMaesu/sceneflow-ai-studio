@@ -23,11 +23,14 @@ log = logging.getLogger('studio')
 @asynccontextmanager
 async def lifespan(app):
     from .production import dispatcher
+    from .model_library import manager as downloads
+    await downloads.start()
     await dispatcher.start()
     try:
         yield
     finally:
         await dispatcher.stop()
+        await downloads.stop()
 
 
 app = FastAPI(title='SceneFlow Studio Agent', version=VERSION, lifespan=lifespan, docs_url=None, redoc_url=None)
@@ -314,6 +317,8 @@ from .insights import router as insights_router
 app.include_router(insights_router)
 from .maintenance import router as maintenance_router
 app.include_router(maintenance_router)
+from .routes_setup import router as setup_router
+app.include_router(setup_router)
 
 
 @app.get('/{path:path}')

@@ -47,9 +47,10 @@ def waveform(asset):
     path=asset_path(asset['id'])
     with path.open('rb') as file:
         if hashlib.file_digest(file,'sha256').hexdigest()!=asset['sha256']:raise ValueError('Audio source changed on disk.')
-    folder=ROOT/'cache'/'waveforms';folder.mkdir(parents=True,exist_ok=True);cache=folder/(asset['sha256']+'.json')
+    from .storage import role_folder,cache_file
+    folder=role_folder('cache')/'waveforms';folder.mkdir(parents=True,exist_ok=True);cache=folder/(asset['sha256']+'.json')
     if cache.is_file():return json.loads(cache.read_text())
-    target=ROOT/'temp'/('waveform-'+uid()+'.wav')
+    target=cache_file('waveform-'+uid()+'.wav')
     try:
         run_tool([executable('ffmpeg'),'-y','-v','error','-i',str(path),'-t','600','-vn','-ac','1','-ar','8000','-c:a','pcm_s16le',str(target)])
         with wave.open(str(target),'rb') as audio:

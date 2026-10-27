@@ -1,0 +1,486 @@
+{
+  "schema": 1,
+  "researched": "2026-10-27",
+  "packs": [
+    {
+      "id": "voices-small",
+      "name": "Voices",
+      "repo": "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice",
+      "revision": "85e237c12c027371202489a0ec509ded67b5e4b5",
+      "license": "Apache 2.0",
+      "source": "https://huggingface.co/Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice",
+      "setup_note": "Start with lighter preset voices. Optional character cloning uses a separate pack.",
+      "gated": false,
+      "files": [
+        {
+          "path": "config.json",
+          "bytes": 4908,
+          "git_blob_sha1": "5e8d5fc100536984e3a89bd87ef08e59e322b29b"
+        },
+        {
+          "path": "generation_config.json",
+          "bytes": 245,
+          "git_blob_sha1": "1872b16d4535564abf2db5d6debe6cddd82b7f2e"
+        },
+        {
+          "path": "merges.txt",
+          "bytes": 1671839,
+          "git_blob_sha1": "20024bfe7c83998e9aeaf98a0cd6a2ce6306c2f0"
+        },
+        {
+          "path": "model.safetensors",
+          "bytes": 1811626576,
+          "sha256": "bc3c7e785eb961179c25450d1acff03f839e0002f2f3a5aeb67b5735c0fa2adb"
+        },
+        {
+          "path": "preprocessor_config.json",
+          "bytes": 127,
+          "git_blob_sha1": "0525dd953bb9241912f7147666f0d535165d5d4f"
+        },
+        {
+          "path": "speech_tokenizer/config.json",
+          "bytes": 2336,
+          "git_blob_sha1": "06cc8dc4c5ec8a1929086b71b98c313020d9268b"
+        },
+        {
+          "path": "speech_tokenizer/configuration.json",
+          "bytes": 76,
+          "git_blob_sha1": "ab58e2eaf53cd14a1a2a7527d9261ceea93a24cd"
+        },
+        {
+          "path": "speech_tokenizer/model.safetensors",
+          "bytes": 682293092,
+          "sha256": "836b7b357f5ea43e889936a3709af68dfe3751881acefe4ecf0dbd30ba571258"
+        },
+        {
+          "path": "speech_tokenizer/preprocessor_config.json",
+          "bytes": 234,
+          "git_blob_sha1": "ba40914f4f49ab98a8ca545d4892ef7291a39592"
+        },
+        {
+          "path": "tokenizer_config.json",
+          "bytes": 7344,
+          "git_blob_sha1": "6ff9fd60cc623bb54bbd603cbd418c97a11528d7"
+        },
+        {
+          "path": "vocab.json",
+          "bytes": 2776833,
+          "git_blob_sha1": "4783fe10ac3adce15ac8f358ef5462739852c569"
+        }
+      ]
+    },
+    {
+      "id": "voices-character",
+      "name": "Character voices",
+      "repo": "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+      "revision": "fd4b254389122332181a7c3db7f27e918eec64e3",
+      "license": "Apache 2.0",
+      "source": "https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+      "setup_note": "Reference voices for recurring characters; use recordings you have permission to use.",
+      "gated": false,
+      "files": [
+        {
+          "path": "config.json",
+          "bytes": 4494,
+          "git_blob_sha1": "81b57e8e790c07e8fa7f82d8bdfd7574d485c396"
+        },
+        {
+          "path": "generation_config.json",
+          "bytes": 245,
+          "git_blob_sha1": "1872b16d4535564abf2db5d6debe6cddd82b7f2e"
+        },
+        {
+          "path": "merges.txt",
+          "bytes": 1671839,
+          "git_blob_sha1": "20024bfe7c83998e9aeaf98a0cd6a2ce6306c2f0"
+        },
+        {
+          "path": "model.safetensors",
+          "bytes": 3857413744,
+          "sha256": "38fc7fc51c5e776e840414b6fd443962e9411b9654888fd7913e4da643cb857c"
+        },
+        {
+          "path": "preprocessor_config.json",
+          "bytes": 127,
+          "git_blob_sha1": "0525dd953bb9241912f7147666f0d535165d5d4f"
+        },
+        {
+          "path": "speech_tokenizer/config.json",
+          "bytes": 2336,
+          "git_blob_sha1": "06cc8dc4c5ec8a1929086b71b98c313020d9268b"
+        },
+        {
+          "path": "speech_tokenizer/configuration.json",
+          "bytes": 76,
+          "git_blob_sha1": "ab58e2eaf53cd14a1a2a7527d9261ceea93a24cd"
+        },
+        {
+          "path": "speech_tokenizer/model.safetensors",
+          "bytes": 682293092,
+          "sha256": "836b7b357f5ea43e889936a3709af68dfe3751881acefe4ecf0dbd30ba571258"
+        },
+        {
+          "path": "speech_tokenizer/preprocessor_config.json",
+          "bytes": 234,
+          "git_blob_sha1": "ba40914f4f49ab98a8ca545d4892ef7291a39592"
+        },
+        {
+          "path": "tokenizer_config.json",
+          "bytes": 7344,
+          "git_blob_sha1": "6ff9fd60cc623bb54bbd603cbd418c97a11528d7"
+        },
+        {
+          "path": "vocab.json",
+          "bytes": 2776833,
+          "git_blob_sha1": "4783fe10ac3adce15ac8f358ef5462739852c569"
+        }
+      ]
+    },
+    {
+      "id": "music",
+      "name": "Music & songs",
+      "repo": "ACE-Step/Ace-Step1.5",
+      "revision": "19671f406d603126926c1b7e2adc169acbcade22",
+      "license": "MIT",
+      "source": "https://huggingface.co/ACE-Step/Ace-Step1.5",
+      "setup_note": "Create instrumental music or songs. Conservative, one-at-a-time generation.",
+      "gated": false,
+      "files": [
+        {
+          "path": "Qwen3-Embedding-0.6B/added_tokens.json",
+          "bytes": 707,
+          "git_blob_sha1": "b54f9135e44c1e81047e8d05cb027af8bc039eed"
+        },
+        {
+          "path": "Qwen3-Embedding-0.6B/chat_template.jinja",
+          "bytes": 4116,
+          "git_blob_sha1": "699ff8df401fe4788525e9c1f9b86a99eadd6230"
+        },
+        {
+          "path": "Qwen3-Embedding-0.6B/config.json",
+          "bytes": 1359,
+          "git_blob_sha1": "21bd712c76114dc22587c6eeb84ab64186c9d245"
+        },
+        {
+          "path": "Qwen3-Embedding-0.6B/merges.txt",
+          "bytes": 1671853,
+          "git_blob_sha1": "31349551d90c7606f325fe0f11bbb8bd5fa0d7c7"
+        },
+        {
+          "path": "Qwen3-Embedding-0.6B/model.safetensors",
+          "bytes": 1191586416,
+          "sha256": "0437e45c94563b09e13cb7a64478fc406947a93cb34a7e05870fc8dcd48e23fd"
+        },
+        {
+          "path": "Qwen3-Embedding-0.6B/special_tokens_map.json",
+          "bytes": 613,
+          "git_blob_sha1": "ac23c0aaa2434523c494330aeb79c58395378103"
+        },
+        {
+          "path": "Qwen3-Embedding-0.6B/tokenizer.json",
+          "bytes": 11423705,
+          "sha256": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a"
+        },
+        {
+          "path": "Qwen3-Embedding-0.6B/tokenizer_config.json",
+          "bytes": 5404,
+          "git_blob_sha1": "ddaf69808214a44fdd26d3785b66c1367c78277a"
+        },
+        {
+          "path": "Qwen3-Embedding-0.6B/vocab.json",
+          "bytes": 2776833,
+          "git_blob_sha1": "4783fe10ac3adce15ac8f358ef5462739852c569"
+        },
+        {
+          "path": "acestep-5Hz-lm-1.7B/added_tokens.json",
+          "bytes": 2217787,
+          "git_blob_sha1": "584075018edeacd6dcc031b3e2cbbf90836eba41"
+        },
+        {
+          "path": "acestep-5Hz-lm-1.7B/chat_template.jinja",
+          "bytes": 4168,
+          "git_blob_sha1": "01be9b307daa2d425f7c168c9fb145a286e0afb4"
+        },
+        {
+          "path": "acestep-5Hz-lm-1.7B/config.json",
+          "bytes": 1385,
+          "git_blob_sha1": "1325891e0f2cb06ea22906f9c89047d09d0dac1f"
+        },
+        {
+          "path": "acestep-5Hz-lm-1.7B/merges.txt",
+          "bytes": 1671853,
+          "git_blob_sha1": "31349551d90c7606f325fe0f11bbb8bd5fa0d7c7"
+        },
+        {
+          "path": "acestep-5Hz-lm-1.7B/model.safetensors",
+          "bytes": 3708521528,
+          "sha256": "f161689da73e5ecefa28ff780d51c2d92a00f056d021d7933c779ed5c6cd7db8"
+        },
+        {
+          "path": "acestep-5Hz-lm-1.7B/special_tokens_map.json",
+          "bytes": 1824199,
+          "git_blob_sha1": "aa26266349a0f38be608e07138c9047356309551"
+        },
+        {
+          "path": "acestep-5Hz-lm-1.7B/tokenizer.json",
+          "bytes": 24321939,
+          "sha256": "35af56c3f5cb3ea2cc578aa28a8937770981d504f183ac5c8c38baf4bbd4af4d"
+        },
+        {
+          "path": "acestep-5Hz-lm-1.7B/tokenizer_config.json",
+          "bytes": 14072925,
+          "sha256": "6cd70cdd89425971794f5235562edcc608b0629a6c4686ae51a8b8c8b8ba5e95"
+        },
+        {
+          "path": "acestep-5Hz-lm-1.7B/vocab.json",
+          "bytes": 2776833,
+          "git_blob_sha1": "4783fe10ac3adce15ac8f358ef5462739852c569"
+        },
+        {
+          "path": "acestep-v15-turbo/config.json",
+          "bytes": 1968,
+          "git_blob_sha1": "6a0b5c09a654614302947fd1d7041f7ed0764d8c"
+        },
+        {
+          "path": "acestep-v15-turbo/configuration_acestep_v15.py",
+          "bytes": 13130,
+          "runtime_code": true,
+          "git_blob_sha1": "965a1b73afb1c89d0959c7d80691e487fdfde505"
+        },
+        {
+          "path": "acestep-v15-turbo/model.safetensors",
+          "bytes": 4787825604,
+          "sha256": "3f6e0797fad420a39bd33979eb6e840e30989e34a3794e843d23b60ec6e422d7"
+        },
+        {
+          "path": "acestep-v15-turbo/modeling_acestep_v15_turbo.py",
+          "bytes": 96036,
+          "runtime_code": true,
+          "git_blob_sha1": "fa1162a5a01cc45c7959f3c531e2a8272ca05104"
+        },
+        {
+          "path": "acestep-v15-turbo/silence_latent.pt",
+          "bytes": 3841215,
+          "sha256": "a778e9dd942f5e8b2c09c55370782d318834432b03dabbcdf70e6ed49ad6358b"
+        },
+        {
+          "path": "config.json",
+          "bytes": 1968,
+          "git_blob_sha1": "6a0b5c09a654614302947fd1d7041f7ed0764d8c"
+        },
+        {
+          "path": "vae/config.json",
+          "bytes": 425,
+          "git_blob_sha1": "f49eb7b261dde15ed29c0fa1e790251dcecbd280"
+        },
+        {
+          "path": "vae/diffusion_pytorch_model.safetensors",
+          "bytes": 337431388,
+          "sha256": "da17edb604c40deaf09e9b24974e590d1ca83a374070e5d0884cfa4bed9a99b0"
+        }
+      ]
+    },
+    {
+      "id": "effects",
+      "name": "Sound effects",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "license": "Apache 2.0",
+      "source": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "setup_note": "Create short effects and ambience; place them against your scene.",
+      "gated": false,
+      "files": [
+        {
+          "path": "model_index.json",
+          "bytes": 504,
+          "git_blob_sha1": "936d7fb5d4e492b6ac64bcce94c33fbfd3a56978"
+        },
+        {
+          "path": "scheduler/scheduler_config.json",
+          "bytes": 134,
+          "git_blob_sha1": "63d930b308ad1b05dd71b91a747d7f87ff903a11"
+        },
+        {
+          "path": "text_encoder/config.json",
+          "bytes": 726,
+          "git_blob_sha1": "044a86ecf7cb32238f3fae4184e55d354787edec"
+        },
+        {
+          "path": "text_encoder/generation_config.json",
+          "bytes": 239,
+          "git_blob_sha1": "20a8a9156fc8c3f25295ca067f61fdf120d517c5"
+        },
+        {
+          "path": "text_encoder/model-00001-of-00002.safetensors",
+          "bytes": 3441185608,
+          "sha256": "169ad53ec313c3a34b06c0809216e4fc072cce444a5d4ff2b59690d064130ed5"
+        },
+        {
+          "path": "text_encoder/model-00002-of-00002.safetensors",
+          "bytes": 622329984,
+          "sha256": "912becff8d60672aa8628ef08c05898d9adf17c2ad4ae3caf99b065622fdeff9"
+        },
+        {
+          "path": "text_encoder/model.safetensors.index.json",
+          "bytes": 25605,
+          "git_blob_sha1": "986d7db875b47d21f68530f6baac038f1b297b39"
+        },
+        {
+          "path": "tokenizer/merges.txt",
+          "bytes": 1671853,
+          "git_blob_sha1": "31349551d90c7606f325fe0f11bbb8bd5fa0d7c7"
+        },
+        {
+          "path": "tokenizer/tokenizer.json",
+          "bytes": 11422654,
+          "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
+        },
+        {
+          "path": "tokenizer/tokenizer_config.json",
+          "bytes": 9732,
+          "git_blob_sha1": "417d038a63fa3de29cfde265caedae14d1a58d92"
+        },
+        {
+          "path": "tokenizer/vocab.json",
+          "bytes": 2776833,
+          "git_blob_sha1": "4783fe10ac3adce15ac8f358ef5462739852c569"
+        },
+        {
+          "path": "transformer/config.json",
+          "bytes": 311,
+          "git_blob_sha1": "8828d73f1202f94ef006db4655a6340659147f6e"
+        },
+        {
+          "path": "transformer/diffusion_pytorch_model.safetensors",
+          "bytes": 5664274560,
+          "sha256": "bda86e4d6730ff47cea47851d219880191e9d21d4d264b21a6ffe7cb2db9dfb0"
+        },
+        {
+          "path": "vae/config.json",
+          "bytes": 169,
+          "git_blob_sha1": "cb812e0f17f290b47131f3c6fb49d3e7af57d636"
+        },
+        {
+          "path": "vae/vae_128d_48k.pth",
+          "bytes": 1486465965,
+          "sha256": "07e6139ff33bd21ba8a7a7f40ed24aab13ac0d100cd686f8a9f3e03dc5251cb1"
+        }
+      ]
+    },
+    {
+      "id": "captions",
+      "name": "Captions",
+      "repo": "Qwen/Qwen3-ASR-0.6B",
+      "revision": "5eb144179a02acc5e5ba31e748d22b0cf3e303b0",
+      "license": "Apache 2.0",
+      "source": "https://huggingface.co/Qwen/Qwen3-ASR-0.6B",
+      "setup_note": "Transcribe speech, then review the words.",
+      "gated": false,
+      "files": [
+        {
+          "path": "chat_template.json",
+          "bytes": 1161,
+          "git_blob_sha1": "c44736493efd71ec96218cc626904698cdb13235"
+        },
+        {
+          "path": "config.json",
+          "bytes": 6193,
+          "git_blob_sha1": "8113d596dec2d1a2ef4552edfe005ee84d16d9ec"
+        },
+        {
+          "path": "generation_config.json",
+          "bytes": 142,
+          "git_blob_sha1": "7382a4d347c0a865b76bb1b8277f66a5ac312854"
+        },
+        {
+          "path": "merges.txt",
+          "bytes": 1671853,
+          "git_blob_sha1": "31349551d90c7606f325fe0f11bbb8bd5fa0d7c7"
+        },
+        {
+          "path": "model.safetensors",
+          "bytes": 1876091704,
+          "sha256": "79d6cbd4c98c7bbffe9db2edac07f56cd6637d0d5944b27f6c2b8353840323ea"
+        },
+        {
+          "path": "preprocessor_config.json",
+          "bytes": 330,
+          "git_blob_sha1": "8f7f07346466d5d494ec0d4969d1c3d0190eed72"
+        },
+        {
+          "path": "tokenizer_config.json",
+          "bytes": 12487,
+          "git_blob_sha1": "b93109843922a40c6654c5449d3bf95372267c66"
+        },
+        {
+          "path": "vocab.json",
+          "bytes": 2776833,
+          "git_blob_sha1": "4783fe10ac3adce15ac8f358ef5462739852c569"
+        }
+      ]
+    },
+    {
+      "id": "alignment",
+      "name": "Word timing",
+      "repo": "Qwen/Qwen3-ForcedAligner-0.6B",
+      "revision": "c7cbfc2048c462b0d63a45797104fc9db3ad62b7",
+      "license": "Apache 2.0",
+      "source": "https://huggingface.co/Qwen/Qwen3-ForcedAligner-0.6B",
+      "setup_note": "Match known words to speech in supported languages.",
+      "gated": false,
+      "files": [
+        {
+          "path": "chat_template.json",
+          "bytes": 1161,
+          "git_blob_sha1": "c44736493efd71ec96218cc626904698cdb13235"
+        },
+        {
+          "path": "config.json",
+          "bytes": 5982,
+          "git_blob_sha1": "7b9883fe52d0ba896773687a7fdad38eacab062d"
+        },
+        {
+          "path": "generation_config.json",
+          "bytes": 115,
+          "git_blob_sha1": "b0a540032cf7b6b5ba1438d04ab69b7e787d9b8e"
+        },
+        {
+          "path": "merges.txt",
+          "bytes": 1671853,
+          "git_blob_sha1": "31349551d90c7606f325fe0f11bbb8bd5fa0d7c7"
+        },
+        {
+          "path": "model.safetensors",
+          "bytes": 1835544544,
+          "sha256": "47831d0e82f96b20e9034dba01a075ee06436654719f6a68289e49f1b65ce0e7"
+        },
+        {
+          "path": "preprocessor_config.json",
+          "bytes": 330,
+          "git_blob_sha1": "8f7f07346466d5d494ec0d4969d1c3d0190eed72"
+        },
+        {
+          "path": "tokenizer_config.json",
+          "bytes": 12666,
+          "git_blob_sha1": "3df92df83b22342e36a7b11cf9a70de2a2996bec"
+        },
+        {
+          "path": "vocab.json",
+          "bytes": 2776833,
+          "git_blob_sha1": "4783fe10ac3adce15ac8f358ef5462739852c569"
+        }
+      ]
+    },
+    {
+      "id": "ltx25",
+      "name": "Synchronized video & sound",
+      "repo": "Lightricks/LTX-2.5",
+      "revision": "49b093a39c19169a8a81721dcc541e07e945232f",
+      "license": "LTX Community terms",
+      "source": "https://huggingface.co/Lightricks/LTX-2.5",
+      "gated": true,
+      "files": [],
+      "blocked": "Optional LTX setup is deferred. This PC needs a qualified storage/RAM/runtime configuration before a download is recommended."
+    }
+  ]
+}

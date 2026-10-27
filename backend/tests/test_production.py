@@ -13,7 +13,7 @@ from studio.store import Store,encode,now,uid
 @pytest.fixture
 def engine(tmp_path,monkeypatch,request):
     store=Store(tmp_path/'studio.sqlite')
-    modules={name:importlib.import_module('studio.'+name) for name in ['production','adapters','media','exports']}
+    modules={name:importlib.import_module('studio.'+name) for name in ['production','adapters','media','exports','storage']}
     for module in modules.values():
         monkeypatch.setattr(module,'db',store)
     modules['production'].migrate()

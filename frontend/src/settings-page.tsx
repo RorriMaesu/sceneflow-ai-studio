@@ -30,6 +30,7 @@ export function FriendlySettings({
         Your preferences and connection help. Creative settings belong inside
         each video.
       </p>
+      {data && <section className="panel settings-panel"><h2>Creation tools and folders</h2><p>Add voices, music and other tools, choose where files go, and check for updates.</p><button className="button" onClick={() => go("Setup")}>Open setup & downloads</button></section>}
       <section className="panel settings-panel">
         <h2>Notifications</h2>
         <p>Choose how you would like to hear when work finishes.</p>

@@ -31,7 +31,8 @@ async def reviews(identifier:str,session=Depends(require_session)):
 
 
 async def receive(file,suffix,limit):
-    path=ROOT/'temp'/(uid()+suffix);total=0
+    from .storage import cache_file
+    path=cache_file(uid()+suffix);total=0
     try:
         with path.open('wb') as out:
             while data:=await file.read(1024*1024):
@@ -97,13 +98,15 @@ async def backup(identifier:str,session=Depends(require_session)):
 
 @router.get('/backups')
 async def backups(session=Depends(require_session)):
-    return [{'id':p.name.split('.')[0],'filename':p.name,'bytes':p.stat().st_size,'created':p.stat().st_mtime} for p in sorted((ROOT/'backups').glob('*.sceneflow.zip'),key=lambda p:p.stat().st_mtime,reverse=True)]
+    from .storage import backup_files
+    return [{'id':p.name.split('.')[0],'filename':p.name,'bytes':p.stat().st_size,'created':p.stat().st_mtime} for p in sorted(backup_files(),key=lambda p:p.stat().st_mtime,reverse=True)]
 
 
 @router.post('/backups/{identifier}/ticket')
 async def backup_ticket(identifier:str,session=Depends(require_session)):
     from uuid import UUID
-    identifier=str(UUID(identifier));path=ROOT/'backups'/(identifier+'.sceneflow.zip')
+    from .storage import backup_file
+    identifier=str(UUID(identifier));path=backup_file(identifier)
     if not path.is_file():raise KeyError('Backup not found')
     value=ticket(session,'backup',identifier,ttl=300)
     return {'url':f'/api/backups/{identifier}/download?ticket={value}'}
@@ -113,7 +116,8 @@ async def backup_ticket(identifier:str,session=Depends(require_session)):
 async def download_backup(identifier:str,request:Request,ticket:str=''):
     from uuid import UUID
     identifier=str(UUID(identifier));verify_ticket(ticket,'backup',identifier,origin=request.headers.get('origin'))
-    return FileResponse(ROOT/'backups'/(identifier+'.sceneflow.zip'),filename='SceneFlow-project-'+identifier+'.zip')
+    from .storage import backup_file
+    return FileResponse(backup_file(identifier),filename='SceneFlow-project-'+identifier+'.zip')
 
 
 @router.post('/backups/restore')

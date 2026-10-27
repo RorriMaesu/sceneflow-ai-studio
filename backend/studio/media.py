@@ -13,6 +13,10 @@ from .store import db, encode, now, uid
 
 
 def managed_path(relative):
+    from .storage import resolve_media
+    registered = resolve_media(relative)
+    if registered is not None:
+        return registered
     path = (ROOT / relative).resolve()
     if not path.is_relative_to(ROOT) or not path.is_relative_to((ROOT / 'projects').resolve()):
         raise ValueError('This file is outside managed project storage.')
@@ -45,14 +49,16 @@ def executable(kind):
 
 
 def run_tool(arguments, timeout=180):
-    environment = {**os.environ, 'TEMP': str(ROOT/'temp'), 'TMP': str(ROOT/'temp')}
+    from .storage import worker_environment
+    environment = worker_environment()
     process = subprocess.Popen(arguments, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace', env=environment, cwd=ROOT/'temp', creationflags=0x08000000 if os.name=='nt' else 0)
     marker=None
     for argument in arguments[1:]:
         try:
-            relative=Path(str(argument)).resolve().relative_to((ROOT/'temp').resolve())
-            if relative.parts and relative.parts[0].startswith('export-'):
-                marker=ROOT/'temp'/relative.parts[0]/'worker.json'
+            from .storage import export_folder
+            parent=Path(str(argument)).resolve().parent
+            if parent.name.startswith('export-') and parent==export_folder(parent.name.removeprefix('export-')).resolve():
+                marker=parent/'worker.json'
                 marker.write_text(encode({'pid':process.pid,'created':psutil.Process(process.pid).create_time(),'binary':str(Path(arguments[0]).resolve())}),encoding='utf-8');break
         except (ValueError,OSError,psutil.Error):pass
     try:
@@ -112,7 +118,12 @@ def add_asset(project_id, scene_id, job_id, kind, incoming, source_asset_id=None
         relative = relative / scene_id / (kind+'s')
     relative = relative / (identifier+suffix)
     destination = managed_path(relative)
+    from .storage import media_location, require_space
+    configured = media_location(project_id, scene_id, kind, identifier, suffix, extra)
+    if configured:
+        relative, destination = configured
     destination.parent.mkdir(parents=True, exist_ok=True)
+    require_space(destination.parent, incoming.stat().st_size)
     temporary = destination.with_suffix(destination.suffix+'.part')
     shutil.copyfile(incoming, temporary)
     metadata = {**verify(temporary, kind), **(extra or {})}

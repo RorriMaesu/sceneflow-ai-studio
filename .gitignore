@@ -13,6 +13,7 @@ logs/
 backups/
 projects/
 local/
+library/
 tools/
 !config/example.json
 models/

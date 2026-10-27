@@ -54,9 +54,10 @@ def execute(job,snapshot):
         raise ValueError('A trimmed clip is shorter than one export frame.')
     expected=sum(durations)
     reserve=studio_settings['disk_reserve_gb']*1073741824+max(512*1024**2,expected*width*height*fps*.04)
-    if shutil.disk_usage(ROOT).free<reserve:
+    from .storage import export_folder
+    root=export_folder(job['id']);root.mkdir(parents=True,exist_ok=True)
+    if shutil.disk_usage(root).free<reserve:
         raise ValueError('Not enough free project-drive space for export intermediates and the storage reserve.')
-    root=ROOT/'temp'/('export-'+job['id']);root.mkdir(parents=True,exist_ok=True)
     normalized=[];has_audio=False
     # Normalize trim/speed/audio together; each clip has exactly one stereo track.
     for index,(clip,duration) in enumerate(zip(clips,durations)):

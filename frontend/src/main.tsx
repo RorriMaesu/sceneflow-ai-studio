@@ -77,6 +77,7 @@ import { DirectorProposal } from "./director-proposal";
 import { SaveVideoPage } from "./save-video";
 import { ActivityPage } from "./activity-page";
 import { FriendlySettings } from "./settings-page";
+import { StudioSetup } from "./studio-setup";
 import { ProjectSteps, NextStep, StoryGuide, HelpPage } from "./guided-project";
 import { PAGE_NAMES, STEPS } from "./flow";
 import { NewVideoWizard } from "./new-video";
@@ -102,6 +103,7 @@ const NAV: [string, LucideIcon, string][] = [
   ["Overview", Grid2X2, "workspace"],
   ["Generation Queue", Activity, "workspace"],
   ["Help", MessageCircle, "studio"],
+  ["Setup", SlidersHorizontal, "studio"],
   ["Settings", SettingsIcon, "studio"],
 ];
 const SEARCH_NAV: [string, LucideIcon, string][] = [
@@ -786,6 +788,7 @@ function Studio() {
                 </section>
               ) : page === "Overview" ? (
                 <>
+                  {data && !data.settings.setup_complete && <section className="panel setup-welcome"><h2>Make this studio yours</h2><p>Choose where files go and add voices or music when you need them.</p><Button primary onClick={() => go("Setup")}>Set up my studio</Button></section>}
                   <ReadinessCoach
                     data={data}
                     onSettings={() => go("Settings")}
@@ -1052,6 +1055,8 @@ function Studio() {
                   active={active}
                   choose={choose}
                 />
+              ) : page === "Setup" ? (
+                data ? <StudioSetup act={act} done={() => go("Overview")} /> : <Empty title="Connect your studio first" description="Start SceneFlow on this PC, then connect this browser." action={<Button primary onClick={() => setPairOpen(true)}>Connect</Button>} />
               ) : page === "Settings" ? (
                 <FriendlySettings
                   project={project}

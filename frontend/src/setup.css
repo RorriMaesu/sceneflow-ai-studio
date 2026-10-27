@@ -1,0 +1,13 @@
+.studio-setup { max-width: 1080px; display: grid; gap: 20px; }
+.studio-setup > p { max-width: 75ch; }
+.studio-setup .settings-panel { display: grid; gap: 16px; padding: 24px; }
+.setup-tools { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px; }
+.setup-tool { min-width: 0; display: grid; align-content: start; gap: 12px; padding-block: 16px; border-top: 1px solid var(--line); }
+.setup-tool h4 { font-size: 17px; margin-bottom: 8px; }
+.studio-setup p, .studio-setup a, .studio-setup option { overflow-wrap: anywhere; }
+.studio-setup details { min-width: 0; }
+.studio-setup details > label { display: grid; gap: 8px; margin-block: 12px; }
+.studio-setup .button-row { flex-wrap: wrap; }
+.studio-setup progress { width: 100%; accent-color: var(--violet); }
+.studio-setup > .button { justify-self: start; }
+.setup-welcome { padding: 24px; display: grid; gap: 12px; margin-bottom: 20px; }
