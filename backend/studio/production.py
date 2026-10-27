@@ -299,7 +299,7 @@ class Dispatcher:
     async def start(self):
         migrate()
         from .provider_workers import recovery
-        await asyncio.to_thread(recovery)
+        await asyncio.to_thread(recovery,db)
         db.execute("UPDATE jobs SET status='needs_attention',error='Studio stopped before this sound task finished. Review and retry; earlier takes are preserved.' WHERE status='running' AND kind IN ('speech','music','effects') AND NOT EXISTS (SELECT 1 FROM provider_workers w WHERE w.job_id=jobs.id AND w.status='running')")
         from .director import migrate as migrate_director
         migrate_director()

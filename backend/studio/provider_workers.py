@@ -18,8 +18,8 @@ class CreationCancelled(Exception):
     pass
 
 
-def migrate():
-    with db.connect(True) as con:
+def migrate(store=None):
+    with (store or db).connect(True) as con:
         con.executescript('''
         CREATE TABLE IF NOT EXISTS provider_runtimes(id TEXT PRIMARY KEY,root_id TEXT,python_relative TEXT,state TEXT,manifest TEXT,updated REAL);
         CREATE TABLE IF NOT EXISTS provider_workers(job_id TEXT PRIMARY KEY,pid INTEGER,created REAL,executable TEXT,request_path TEXT,nonce TEXT,status TEXT,updated REAL);
@@ -92,14 +92,15 @@ def stop_owned(row):
     return not running
 
 
-def recovery():
-    migrate()
-    for row in db.all("SELECT * FROM provider_workers WHERE status='running'"):
+def recovery(store=None):
+    store=store or db
+    migrate(store)
+    for row in store.all("SELECT * FROM provider_workers WHERE status='running'"):
         if stop_owned(row):
-            db.execute("UPDATE provider_workers SET status='stopped',updated=? WHERE job_id=?", (now(), row['job_id']))
-            db.execute("UPDATE jobs SET status='needs_attention',error='Studio restarted during this sound/voice task. Saved results are kept; review before retrying.',finished=? WHERE id=? AND status IN ('running','submitted','reconciling')", (now(), row['job_id']))
+            store.execute("UPDATE provider_workers SET status='stopped',updated=? WHERE job_id=?", (now(), row['job_id']))
+            store.execute("UPDATE jobs SET status='needs_attention',error='Studio restarted during this sound/voice task. Saved results are kept; review before retrying.',finished=? WHERE id=? AND status IN ('running','submitted','reconciling')", (now(), row['job_id']))
         else:
-            db.execute("UPDATE jobs SET error='A previous tool process could not be verified. New graphics work waits until it is safely stopped.' WHERE id=?", (row['job_id'],))
+            store.execute("UPDATE jobs SET error='A previous tool process could not be verified. New graphics work waits until it is safely stopped.' WHERE id=?", (row['job_id'],))
 
 
 def active_reason(except_job=None):
