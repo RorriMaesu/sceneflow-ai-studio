@@ -3,7 +3,7 @@ import json
 import logging
 
 import httpx
-from pydantic import BaseModel,ConfigDict,Field,ValidationError
+from pydantic import BaseModel,ConfigDict,Field,ValidationError,model_validator
 
 from .config import settings
 from .resources import resources
@@ -48,13 +48,27 @@ class Outline(BaseModel):
 
 class DirectorAction(BaseModel):
     model_config=ConfigDict(extra='forbid')
-    action:str=Field(pattern='^(create_scene|revise_scene|style_guide)$')
+    action:str=Field(pattern='^(create_scene|revise_scene|style_guide|regenerate_still|regenerate_video|review_still|review_video|pause_production|resume_production)$')
     scene_id:str|None=None
     title:str|None=Field(default=None,max_length=160)
     summary:str|None=Field(default=None,max_length=2000)
     image_prompt:str|None=Field(default=None,max_length=6000)
     video_prompt:str|None=Field(default=None,max_length=6000)
     value:str|None=Field(default=None,max_length=5000)
+    duration:float|None=Field(default=None,ge=1,le=5)
+    seed:int|None=Field(default=None,ge=0,lt=2**63)
+    image_workflow:str|None=Field(default=None,max_length=100)
+    video_workflow:str|None=Field(default=None,max_length=100)
+    negative_prompt:str|None=Field(default=None,max_length=2000)
+
+    @model_validator(mode='after')
+    def matching_fields(self):
+        creative={'title','summary','image_prompt','video_prompt','negative_prompt','duration','seed','image_workflow','video_workflow'}
+        allowed={'action'}|((creative|({'scene_id'} if self.action=='revise_scene' else set())) if self.action in ['create_scene','revise_scene'] else {'value'} if self.action=='style_guide' else set() if self.action in ['pause_production','resume_production'] else {'scene_id'})
+        unexpected=set(self.model_dump(exclude_none=True))-allowed
+        if unexpected:raise ValueError(f"{self.action} cannot carry {', '.join(sorted(unexpected))}. Use revise_scene for setting or prompt edits; generation commands contain only their target scene ID.")
+        if self.action not in ['create_scene','style_guide','pause_production','resume_production'] and not self.scene_id:raise ValueError('Use an exact scene ID for this action.')
+        return self
 
 
 class DirectorReply(BaseModel):
@@ -63,16 +77,26 @@ class DirectorReply(BaseModel):
     actions:list[DirectorAction]=Field(default_factory=list,max_length=12)
 
 
+class CreativeAction(DirectorAction):
+    action:str=Field(pattern='^(create_scene|revise_scene|style_guide)$')
+
+
+class CreativeReply(DirectorReply):
+    actions:list[CreativeAction]=Field(default_factory=list,max_length=12)
+
+
 def migrate():
     db.execute('CREATE TABLE IF NOT EXISTS proposals(id TEXT PRIMARY KEY,project_id TEXT,job_id TEXT,kind TEXT,base_revision INTEGER,scene_revisions TEXT,body TEXT,status TEXT,created REAL)')
+    db.execute('CREATE TABLE IF NOT EXISTS director_commands(id TEXT PRIMARY KEY,project_id TEXT,scene_id TEXT,operation TEXT,target_revision INTEGER,inputs TEXT,status TEXT,error TEXT,created REAL)')
 
 
 def context(project,selected=None):
+    from .adapters import registry
     # A compact scene index preserves identity without sending every full prompt.
     ordered=sorted(project['scenes'],key=lambda s:s['id']!=selected)
     index=[{'id':s['id'],'revision':s['revision'],'title':s['title'][:80],'summary':s['body'].get('summary','')[:70]} for s in ordered[:40]]
     detailed=[s for s in project['scenes'] if s['id']==selected][:1]
-    return {'title':project['title'],'brief':project['brief'][:3000],'style_guide':project['settings'].get('style_guide','')[:1500],'characters':str(project['settings'].get('characters',[]))[:1000],'scene_index':index,'omitted_scenes':max(0,len(ordered)-40),'selected_scenes':[{'id':s['id'],'body':{k:str(v)[:1200] for k,v in s['body'].items() if k in ['summary','image_prompt','video_prompt']}} for s in detailed]}
+    return {'title':project['title'],'brief':project['brief'][:3000],'style_guide':project['settings'].get('style_guide','')[:1500],'characters':str(project['settings'].get('characters',[]))[:1000],'scene_index':index,'visual_rules':project['settings'].get('visual_rules','')[:1500],'reference_asset_ids':project['settings'].get('reference_asset_ids',[]),'production_mode':project['mode'],'selected_assets':[{'scene_id':s['id'],'still':s['selected_image_id'],'video':s['selected_video_id']} for s in ordered[:40]],'available_workflows':[{'id':w['id'],'task':w['task'],'status':w['status']} for w in registry.list()],'omitted_scenes':max(0,len(ordered)-40),'selected_scenes':[{'id':s['id'],'body':{k:str(v)[:1200] for k,v in s['body'].items() if k in ['summary','image_prompt','video_prompt']}} for s in detailed]}
 
 
 async def model_details(model,client=None):
@@ -176,7 +200,7 @@ def apply_proposal(identifier):
             raise Conflict('The project changed. Request a fresh proposal before applying it.')
         revisions=json.loads(proposal['scene_revisions']);body=json.loads(proposal['body']);config=json.loads(project['settings'])
         scenes={r['id']:dict(r) for r in con.execute('SELECT * FROM scenes WHERE project_id=?',(project['id'],))}
-        creates=[];edits=[]
+        creates=[];edits=[];commands=[]
         if proposal['kind']=='plan':
             plan=StoryPlan.model_validate(body)
             if {k:v['revision'] for k,v in scenes.items()}!=revisions:
@@ -184,9 +208,19 @@ def apply_proposal(identifier):
             creates=[(s.title,s.model_dump(exclude={'title'})) for s in plan.scenes]
             config.update(style_guide=plan.style_guide,synopsis=plan.synopsis)
         else:
+            job=con.execute('SELECT snapshot FROM jobs WHERE id=?',(proposal['job_id'],)).fetchone()
+            operations_allowed=bool(job and json.loads(job['snapshot']).get('allow_operations'))
             for action in DirectorReply.model_validate(body).actions:
+                if action.action not in ['create_scene','revise_scene','style_guide'] and not operations_allowed:raise ValueError('This request allowed creative edits only. Enable generation and queue proposals before requesting an operation.')
                 values=action.model_dump(exclude_none=True)
-                creative={k:v for k,v in values.items() if k in ['summary','image_prompt','video_prompt']}
+                creative={k:v for k,v in values.items() if k in ['summary','image_prompt','video_prompt','negative_prompt','duration','seed','image_workflow','video_workflow']}
+                from .validation import scene_body
+                scene_body(creative)
+                for field,task in [('image_workflow','text_to_image'),('video_workflow','image_to_video')]:
+                    if creative.get(field):
+                        from .adapters import registry
+                        entry=registry.get(creative[field])
+                        if entry['status']!='ready' or entry['task']!=task:raise ValueError('The proposed workflow is not available for this stage.')
                 if action.action=='create_scene':
                     creates.append((action.title or 'New scene',creative))
                 elif action.action=='revise_scene':
@@ -194,8 +228,18 @@ def apply_proposal(identifier):
                     if not scene or scene['revision']!=revisions.get(action.scene_id) or any(e[0]['id']==scene['id'] for e in edits):
                         raise Conflict('A proposed scene changed or appears twice. No changes were applied.')
                     edits.append((scene,action.title or scene['title'],{**json.loads(scene['body']),**creative}))
-                else:
+                elif action.action=='style_guide':
                     config['style_guide']=action.value or ''
+                elif action.action in ['pause_production','resume_production']:
+                    if action.scene_id:raise ValueError('Pause and resume are project operations; do not attach a scene ID.')
+                    commands.append((None,action.action))
+                else:
+                    scene=scenes.get(action.scene_id)
+                    if not scene or scene['revision']!=revisions.get(action.scene_id):raise Conflict('An operational target changed. Request a fresh proposal.')
+                    if action.action.startswith('review_') and not scene['selected_image_id' if action.action=='review_still' else 'selected_video_id']:raise ValueError('Select a take before requesting its visual review.')
+                    commands.append((scene['id'],action.action))
+        if len(set(commands))!=len(commands):raise ValueError('The proposal repeats the same production command.')
+        if any(op=='pause_production' for _,op in commands) and len(commands)>1:raise ValueError('Apply a pause separately from other production commands.')
         position=max((s['position'] for s in scenes.values()),default=-1)+1
         for title,body in creates:
             sid,rid=uid(),uid();data={'summary':'','image_prompt':'','video_prompt':'','negative_prompt':'','duration':3,'seed':26102026,'locked':False,**body}
@@ -206,12 +250,57 @@ def apply_proposal(identifier):
             con.execute('UPDATE scenes SET title=?,body=?,revision=?,revision_id=?,updated=? WHERE id=?',(title,encode(data),revision,rid,now(),scene['id']))
             con.execute('INSERT INTO scene_revisions VALUES(?,?,?,?,?)',(rid,scene['id'],revision,encode({'title':title,**data}),now()));changed.append(scene['id'])
         con.execute('UPDATE projects SET settings=?,revision=revision+1,updated=? WHERE id=?',(encode(config),now(),project['id']))
+        for scene_id,operation in commands:
+            target=con.execute('SELECT revision FROM scenes WHERE id=?',(scene_id,)).fetchone()[0] if scene_id else project['revision']+1
+            selected=con.execute('SELECT selected_image_id,selected_video_id FROM scenes WHERE id=?',(scene_id,)).fetchone() if scene_id else None
+            aid=selected['selected_image_id' if operation=='review_still' else 'selected_video_id'] if selected and operation.startswith('review_') else None
+            con.execute('INSERT INTO director_commands VALUES(?,?,?,?,?,?,?,?,?)',(uid(),project['id'],scene_id,operation,target,encode({'project_revision':project['revision']+1,'asset_id':aid}),'pending',None,now()))
         con.execute("UPDATE proposals SET status='applied' WHERE id=?",(identifier,))
     from .production import supersede_pending
     for scene_id in changed:
         supersede_pending(scene_id)
     db.event('director.applied',{'project_id':project['id'],'proposal_id':identifier})
     return db.project(project['id'])
+
+
+async def run_commands():
+    """Persisted, user-reviewed operations run at dispatcher boundaries."""
+    from .production import pause,produce
+    row=db.one("SELECT * FROM director_commands WHERE status='pending' ORDER BY created LIMIT 1")
+    if not row:return
+    claimed=db.execute("UPDATE director_commands SET status='running' WHERE id=? AND status='pending'",(row['id'],))
+    if not claimed:return
+    try:
+        scene=db.scene(row['scene_id']) if row['scene_id'] else None
+        project=db.project(row['project_id'])
+        inputs=json.loads(row['inputs'])
+        if project['revision']!=inputs['project_revision']:raise Conflict('Project settings changed after approval. Request a fresh operation.')
+        if (scene['revision'] if scene else project['revision'])!=row['target_revision']:raise Conflict('The reviewed target changed. Request a new proposal; nothing was launched.')
+        if row['operation'] in ['pause_production','resume_production']:pause(project['id'],row['operation']=='pause_production')
+        elif row['operation'].startswith('regenerate_'):
+            from .adapters import registry
+            if not registry.info:await registry.discover()
+            produce(project['id'],'selected_still' if row['operation']=='regenerate_still' else 'selected_video',scene['id'])
+        else:
+            from .quality import queue_review
+            aid=inputs['asset_id']
+            if not aid:raise ValueError('The selected take no longer exists.')
+            await queue_review(aid,automatic=False)
+        db.execute("UPDATE director_commands SET status='completed' WHERE id=?",(row['id'],))
+    except Exception as error:db.execute("UPDATE director_commands SET status='failed',error=? WHERE id=?",(str(error)[:1000],row['id']))
+    db.event('director.command',{'project_id':row['project_id'],'command_id':row['id']})
+
+
+def impact(proposal):
+    if proposal['kind']=='plan':return ['Adds the proposed scenes as new revisions. Existing takes remain available.']
+    result=[]
+    for action in proposal['body'].get('actions',[]):
+        operation=action['action'];scene=db.one('SELECT title FROM scenes WHERE id=? AND project_id=?',(action.get('scene_id'),proposal['project_id']))
+        label=scene['title'] if scene else 'Project'
+        fields=[k for k in action if k not in ['action','scene_id'] and action[k] is not None]
+        stages='image and animation' if any(k in fields for k in ['image_prompt','negative_prompt','seed','image_workflow']) else 'animation' if any(k in fields for k in ['video_prompt','duration','video_workflow']) else 'no generation inputs'
+        result.append(f"{label}: {operation.replace('_',' ')}"+(f" · changes {', '.join(fields)} · affects {stages}" if operation=='revise_scene' else ' · runs only after approval'))
+    return result+['Active jobs keep frozen inputs. Earlier media stays available. New generation may use the GPU and take several minutes.']
 
 
 async def execute_ai(job,snapshot):
@@ -251,17 +340,18 @@ async def execute_ai(job,snapshot):
                 if snapshot.get('auto_apply') and not project['scenes'] and project['revision']==snapshot['base_revision']:
                     apply_proposal(proposal)
             else:
-                system='You are a thoughtful local film director. Answer questions clearly. Propose typed actions only when the user asks for a creative change. Use exact scene IDs from context for scene edits, and never apply a request for one scene to all scenes. Actions are suggestions requiring user review. Never propose shell commands, code execution, filesystem access, network operations, model downloads, or unsupported generation features. Keep creative changes targeted and preserve character/style rules.'
+                system='You are a thoughtful local film director. Answer questions clearly. Propose typed actions only when the user asks for a creative change. Use exact scene IDs from context for scene edits, and never apply a request for one scene to all scenes. Actions are suggestions requiring user review. Describe them as proposed changes; do not claim they have already been applied. You may propose duration, seed, installed workflow IDs, targeted regeneration, targeted visual review, or project pause/resume only when requested. Use available_workflows and exact selected scene IDs. Do not promise a model that is unavailable. Never propose shell commands, code execution, filesystem access, network operations, model downloads, or unsupported generation features. Keep creative changes targeted and preserve character/style rules.'
                 recent=snapshot.get('recent',[])
                 messages=[{'role':'system','content':system+'\nProject context: '+encode(creative)}]+[{'role':r['role'],'content':r['content'][:1000]} for r in recent]
                 if not messages or messages[-1].get('content')!=snapshot['message']:
                     messages.append({'role':'user','content':snapshot['message']})
-                reply=await structured(client,model,messages,DirectorReply)
+                if not snapshot.get('allow_operations'):messages[0]['content']+=' Generation, visual-review and queue command proposals are disabled for this request. Propose only create_scene, revise_scene or style_guide. Duration, seed and model settings belong to revise_scene; never use a generation action for a setting edit.'
+                reply=await structured(client,model,messages,DirectorReply if snapshot.get('allow_operations') else CreativeReply)
                 db.execute('INSERT INTO chat VALUES(?,?,?,?,?)',(uid(),project['id'],'assistant',reply.reply,now()))
                 if reply.actions:
                     add_proposal(project,job['id'],'director',reply.model_dump(),snapshot)
         finally:
             await unload(client,model)
         update_job(job['id'],'completed',progress=1,finished=now())
-        if job['kind']=='plan' and snapshot.get('auto_continue'):
+        if job['kind']=='plan' and snapshot.get('auto_continue') and snapshot.get('auto_apply') and db.project(project['id'])['mode']=='automatic' and db.one('SELECT status FROM proposals WHERE id=?',(proposal,))['status']=='applied':
             produce(project['id'],'all')

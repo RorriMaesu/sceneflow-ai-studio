@@ -78,13 +78,21 @@ async def queue_review(asset_id,model=None,automatic=False):
     from .continuity import owned_references
     reference_ids=frozen.get('reference_asset_ids',project['settings'].get('reference_asset_ids',[]))
     snapshot.update(reference_assets=owned_references(db,project['id'],reference_ids),visual_rules=frozen.get('visual_rules',project['settings'].get('visual_rules','')))
-    pause(project['id'],False)
     return queue_snapshot('qa',snapshot,automatic=automatic,force=not automatic,priority=0 if automatic else -20)
 
 
 def threshold(policy):
     value=policy.get('qa_threshold')
     return float(value) if value is not None else {'lenient':.5,'balanced':.7,'strict':.85}.get(policy.get('qa_rubric'),.7)
+
+
+def consistent_review(result,policy):
+    result=copy.deepcopy(result);issues=result.get('issues',[]);recommendation=result['recommendation']
+    conflict=(recommendation=='regenerate' and (result['overall_score']>=threshold(policy) or not any(i['severity'] in ['medium','high'] for i in issues)))
+    conflict=conflict or (recommendation=='accept' and (result['overall_score']<threshold(policy) or any(i['severity']=='high' for i in issues) or result.get('confidence')=='low' or any(result.get(k,1)<.5 for k in ['prompt_adherence','visual_quality','character_consistency'])))
+    if conflict:
+        result['raw_recommendation']=recommendation;result['recommendation']='review';result['consistency_note']='The recommendation conflicts with its scores, confidence or actionable issues. Human review is required.'
+    return result
 
 
 def retry_allowed(store,job,snapshot,score):
@@ -102,6 +110,7 @@ def retry_allowed(store,job,snapshot,score):
 async def apply_result(asset,qa_job,snapshot,result):
     from .production import Dispatcher,queue_snapshot,supersede_pending,snapshot_is_current
     if not snapshot.get('allow_actions'):return
+    result=consistent_review(result,snapshot['qa_policy'])
     project=db.project(asset['project_id']);scene=db.scene(asset['scene_id'])
     # An explicit approval always wins, including one made while QA was running.
     fresh=db.one('SELECT * FROM assets WHERE id=?',(asset['id'],))
@@ -163,8 +172,7 @@ async def execute(job,snapshot):
             reviewed=await structured(client,snapshot['model'],[{'role':'system','content':prompt},{'role':'user','content':encode({'requirements':creative,'kind':asset['kind'],'reference_count':len(reference_images),'sample_times':technical['sample_times'],'locked_visual_rules':snapshot.get('visual_rules',''),'rubric':snapshot['qa_policy'].get('qa_rubric') or 'balanced'}),'images':reference_images+images}],Review,{'temperature':.15,'num_predict':2000})
             result={**reviewed.model_dump(),'asset_id':asset['id'],'scene_revision_id':snapshot['scene_revision_id'],'qa_model':snapshot['model'],'technical_integrity':True,'technical':technical,'advisory':True}
             result['reference_assets']=snapshot.get('reference_assets',[])
-            if result['recommendation']=='regenerate' and (result['overall_score']>=threshold(snapshot['qa_policy']) or not any(i['severity'] in ['medium','high'] for i in result['issues'])):
-                result['raw_recommendation']=result['recommendation'];result['recommendation']='review';result['consistency_note']='The model recommendation conflicts with its score or actionable issues. Human review is required.'
+            result=consistent_review(result,snapshot['qa_policy'])
             db.execute('INSERT INTO qa VALUES(?,?,?,?,?)',(uid(),asset['id'],snapshot['model'],encode(result),now()))
         finally:
             await unload(client,snapshot['model'])

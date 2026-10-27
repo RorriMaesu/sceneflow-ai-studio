@@ -307,6 +307,8 @@ from .routes_editing import router as editing_router
 app.include_router(editing_router)
 from .continuity import router as continuity_router
 app.include_router(continuity_router)
+from .insights import router as insights_router
+app.include_router(insights_router)
 
 
 @app.get('/{path:path}')

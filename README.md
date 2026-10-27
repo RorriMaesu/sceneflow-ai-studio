@@ -2,7 +2,7 @@
 
 A local filmmaking studio for planning scenes, generating starting stills, animating their exact images, reviewing takes and assembling a movie. The public React interface connects to an authenticated Windows agent on your computer.
 
-**Release 0.6 — creative continuity.** Adds a visual bible, exact reference-image provenance, reference-guided correction with brush masks, candidate comparisons, reference-aware visual review and project-scoped export history to the local production studio.
+**Release 0.7 — editing and production control.** Adds shared timeline playback, audio waveforms, direct trim handles, exact rendered previews, bounded production controls, observed timing estimates and reviewed Director operations to the reference-guided local studio.
 
 - [Published interface](https://rorrimaesu.github.io/sceneflow-ai-studio/)
 - [Verification ledger](docs/EVIDENCE.md)
@@ -40,9 +40,15 @@ A browser may ask for local-network permission. The agent-served interface at `h
 
 Scene drafts stay in the browser until saved or discarded. Revision conflicts require a refresh. The Director presents typed proposals that apply atomically after review: scene creation, targeted prompt changes and style-guide edits. Operational controls remain explicit.
 
+The Director can also propose duration, seed and installed-workflow changes. Generation, visual-review and queue proposals require the explicit **Include generation and queue command proposals** opt-in, followed by proposal approval. Creative-only requests use a narrower schema. Setting fields cannot be disguised as generation operations. Reviewed operations persist until a dispatcher boundary, retain exact target revisions and fail safely if the target or project settings changed.
+
+Production settings expose attempts per new video stage, zero-to-two quality retries, an elapsed run budget and failure policies. Budgets include waiting and stop before a new automatic job; active jobs finish. Resume starts a new budget window. Explicit scene work, review and exports preserve the paused state of other production. Partial exports respect review gates and preserve manually edited cuts.
+
 ## Editing and sound
 
 The timeline supports drag/button reordering, trims, speed, duplicate/split/remove, replacement takes, local undo/redo and saved-revision restoration. Playback order is independent of generation order. Exports freeze the timeline and verify source hashes.
+
+The shared playhead previews the current draft continuously with cuts and approximate browser audio levels. It supports seeking, snapping to clip boundaries, direct trim sliders and imported-audio waveforms. **Render saved preview** makes a smaller H.264 movie with the exact saved transitions, loops and sound mix, without changing final export settings or resuming paused generation.
 
 Sound can be discarded, preserved or mixed with imported music, voiceover and effects. Controls include placement, trims, volume, mute, fades and music ducking. Generated audio sidecars share the exact scene and job and are included once.
 
@@ -55,6 +61,10 @@ Exports include H.264/H.265, pad/crop fitting, configurable size/frame rate, cut
 New video reviews inspect seven evenly spaced samples and the saved visual references. Actual sampled frames can be opened without AI inference. Technical measurements are separate from advisory visual scores; samples cannot establish complete motion adherence or sound quality. The tested model returned conflicting high scores and regeneration advice; the interface flags contradictions for human review and prevents them from triggering regeneration.
 
 Quality retries require an actionable low-scoring failure, preserve earlier attempts, stop without improvement and are limited to two per stage. Manual approval takes precedence.
+
+Acceptance advice with low confidence, low component scores or a high-severity issue also requires human review. A review can request a creative-only Director correction proposal; it does not directly change prompts or start generation.
+
+Observed timing ranges use matching completed presets and explicitly exclude unmeasured work, active jobs, reviews and waits. Draft/20-step/25-step presets and experimental higher resolution remain distinct from measured quality guarantees. Browser completion notifications are optional and require permission; they work while the browser remains open. An interface recovery screen reconnects to saved local work after a rendering error.
 
 ## Workflow limits
 

@@ -117,6 +117,46 @@ def test_bundle_path_escape_rejected_before_writing(editor):
     with zipfile.ZipFile(attack,'w') as archive:
         archive.writestr('../escape.txt','bad');archive.writestr('manifest.json','{}')
     with pytest.raises(ValueError,match='Unsafe'):m['bundles'].restore_bundle(attack)
+
+
+def test_editing_preview_freezes_smaller_picture_without_resuming_production(editor):
+    store,m,p,scenes,assets,root=editor
+    value=timeline(editor);config={**value['settings'],'width':1920,'height':1080,'fps':30}
+    m['exports'].save_timeline(p['id'],value['revision'],value['clips'],[],config)
+    m['production'].pause(p['id'],True)
+    job=m['exports'].queue_export(p['id'],preview=True);snapshot=json.loads(job['snapshot'])
+    assert snapshot['timeline']['settings']['width']==640 and snapshot['timeline']['settings']['height']==360
+    assert snapshot['is_editing_preview'] and store.project(p['id'])['timeline']['settings']['width']==1920
+    assert m['production'].state(p['id'])['paused']==1
+    assert m['production'].Dispatcher().next_job()['id']==job['id']
+    m['exports'].execute_export(job,snapshot)
+    asset=store.one('SELECT metadata FROM assets WHERE job_id=?',(job['id'],));info=json.loads(asset['metadata'])
+    assert info['is_editing_preview'] and info['validation']=='decoded_and_probed' and info['audio_streams']==1
+
+
+def test_waveform_is_bounded_and_rechecks_source_hash_before_cache(editor,monkeypatch):
+    store,m,p,scenes,assets,root=editor
+    module=importlib.import_module('studio.insights');monkeypatch.setattr(module,'ROOT',root);monkeypatch.setattr(module,'db',store)
+    wave=module.waveform(assets[0]);assert 1<=len(wave['peaks'])<=256
+    assert 1.9<wave['duration']<2.2 and max(wave['peaks'])>0
+    assert module.waveform(assets[0])==wave
+    with m['media'].asset_path(assets[0]['id']).open('ab') as file:file.write(b'changed')
+    with pytest.raises(ValueError,match='changed on disk'):module.waveform(assets[0])
+
+
+def test_failure_policy_partial_export_is_labeled_and_idempotent(editor,monkeypatch):
+    import asyncio
+    store,m,p,scenes,assets,root=editor
+    store.update_project(p['id'],1,{'mode':'automatic','settings':{'failure_policy':'partial'}})
+    m['production'].state(p['id']);store.execute('UPDATE production_state SET paused=0,auto_run=1 WHERE project_id=?',(p['id'],))
+    store.execute('INSERT INTO production_runs VALUES(?,?,NULL,0)',(p['id'],0))
+    job=m['production'].queue_snapshot('image',{'project_id':p['id'],'scene_id':scenes[1]['id']},automatic=True);m['production'].update_job(job['id'],'failed')
+    first={**assets[0],'approved':1};monkeypatch.setattr(m['production'],'current_video',lambda scene:first if scene['id']==scenes[0]['id'] else None)
+    dispatcher=m['production'].Dispatcher();asyncio.run(dispatcher.maybe_partial(p['id']));asyncio.run(dispatcher.maybe_partial(p['id']))
+    exports=[j for j in store.jobs(p['id']) if j['kind']=='export'];assert len(exports)==1
+    assert exports[0]['snapshot']['timeline']['settings']['partial']
+    m['exports'].execute_export(store.one('SELECT * FROM jobs WHERE id=?',(exports[0]['id'],)),exports[0]['snapshot'])
+    assert json.loads(store.one("SELECT metadata FROM assets WHERE kind='export'")['metadata'])['partial']
     assert not (root/'escape.txt').exists()
 
 

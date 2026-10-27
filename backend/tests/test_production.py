@@ -40,6 +40,74 @@ def test_twenty_scene_jobs_have_distinct_frozen_prompts(engine):
         assert job['snapshot']['scene_revision_id']==expected['revision_id']
 
 
+def test_elapsed_budget_pauses_before_new_jobs_and_resume_starts_new_window(engine):
+    store,m,p,scenes=engine
+    store.update_project(p['id'],1,{'mode':'automatic','settings':{'run_budget_minutes':1}})
+    m['production'].produce(p['id'],'all');store.execute('UPDATE production_runs SET started=? WHERE project_id=?',(now()-61,p['id']))
+    dispatcher=m['production'].Dispatcher()
+    assert dispatcher.next_job() is None and m['production'].state(p['id'])['paused']==1
+    assert all(j['status']=='queued' for j in store.jobs(p['id']))
+    m['production'].pause(p['id'],False)
+    assert dispatcher.next_job() and m['production'].state(p['id'])['paused']==0
+
+
+def test_multiple_video_attempts_keep_same_exact_source(engine):
+    store,m,p,scenes=engine
+    store.update_project(p['id'],1,{'settings':{'video_attempts':3}})
+    identifier=uid();store.execute('INSERT INTO assets(id,project_id,scene_id,kind,sha256,metadata) VALUES(?,?,?,?,?,?)',(identifier,p['id'],scenes[0]['id'],'image','source-hash','{}'))
+    store.execute('UPDATE scenes SET selected_image_id=? WHERE id=?',(identifier,scenes[0]['id']))
+    m['production'].produce(p['id'],'selected_video',scenes[0]['id'])
+    jobs=store.jobs(p['id']);assert len(jobs)==3
+    assert len({j['snapshot']['seed'] for j in jobs})==3
+    assert all(j['snapshot']['source_asset_id']==identifier and j['snapshot']['source_sha256']=='source-hash' for j in jobs)
+
+
+def test_failed_automatic_job_stop_policy_preserves_other_work(engine):
+    store,m,p,scenes=engine
+    store.update_project(p['id'],1,{'mode':'automatic','settings':{'failure_policy':'stop'}})
+    m['production'].produce(p['id'],'all');job=store.one('SELECT * FROM jobs ORDER BY created LIMIT 1')
+    m['production'].update_job(job['id'],'failed',finished=now(),error='Controlled failure')
+    asyncio.run(m['production'].Dispatcher().failure_policy(job))
+    assert m['production'].state(p['id'])['paused']==1
+    assert store.one("SELECT COUNT(*) n FROM jobs WHERE status='queued'")['n']==len(scenes)-1
+
+
+def test_failed_export_is_never_automatically_retried_by_partial_policy(engine,monkeypatch):
+    store,m,p,scenes=engine
+    store.update_project(p['id'],1,{'mode':'automatic','settings':{'failure_policy':'partial'}})
+    job=m['production'].queue_snapshot('export',{'project_id':p['id'],'title':'Controlled export'},automatic=True)
+    m['production'].update_job(job['id'],'failed',error='Controlled failure')
+    async def forbidden(*args):raise AssertionError('Failed exports must not loop through partial generation policy')
+    dispatcher=m['production'].Dispatcher();monkeypatch.setattr(dispatcher,'maybe_partial',forbidden)
+    asyncio.run(dispatcher.failure_policy(job))
+    assert len(store.jobs(p['id']))==1
+
+
+def test_explicit_scene_work_does_not_resume_paused_automatic_production(engine):
+    store,m,p,scenes=engine
+    store.update_project(p['id'],1,{'mode':'automatic'})
+    m['production'].produce(p['id'],'all');m['production'].pause(p['id'],True)
+    m['production'].produce(p['id'],'selected_still',scenes[1]['id'])
+    assert m['production'].state(p['id'])['paused']==1
+    job=m['production'].Dispatcher().next_job()
+    assert job and job['scene_id']==scenes[1]['id'] and not json.loads(job['snapshot'])['automatic']
+
+
+def test_performance_estimates_use_only_matching_observed_presets(engine):
+    from studio.insights import performance
+    store,m,p,scenes=engine
+    snapshot=m['production'].snapshot_for(scenes[0],p,'image')
+    for index,seconds in enumerate([10,20,30]):
+        job=m['production'].queue_snapshot('image',snapshot,force=True)
+        store.execute("UPDATE jobs SET status='completed',started=?,finished=? WHERE id=?",(100+index*100,100+index*100+seconds,job['id']))
+    m['production'].queue_snapshot('image',snapshot,force=True)
+    result=performance(store,p['id'])
+    assert result['presets'][0]['median_seconds']==20 and result['presets'][0]['samples']==3
+    assert result['queued_observed_range_seconds']==[10,30] and result['unknown_jobs']==0
+    unknown={**snapshot,'width':832};m['production'].queue_snapshot('image',unknown,force=True)
+    assert performance(store,p['id'])['unknown_jobs']==1
+
+
 def test_live_edit_only_supersedes_affected_pending_work(engine):
     store,m,p,scenes=engine
     m['production'].produce(p['id'],'stills')

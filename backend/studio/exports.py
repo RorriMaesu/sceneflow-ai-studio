@@ -85,13 +85,17 @@ def save_timeline(project_id,revision,clips,audio,settings,automatic=False):
     return {**body,'revision':revision+1}
 
 
-def queue_export(project_id,automatic=False):
+def queue_export(project_id,automatic=False,preview=False):
     from .production import pause,queue_snapshot
     project=db.project(project_id)
     timeline=copy.deepcopy(project['timeline'])
     if not timeline or not timeline['clips']:
         raise ValueError('Build and save a timeline before exporting.')
     frozen={'project_id':project_id,'scene_id':None,'title':project['title'],'timeline':timeline,'timeline_revision':timeline['revision']}
+    if preview:
+        config=timeline['settings'];factor=min(1,640/max(config['width'],config['height']))
+        timeline['settings']={**config,'width':max(64,int(config['width']*factor/2)*2),'height':max(64,int(config['height']*factor/2)*2),'fps':min(24,config['fps']),'codec':'h264','crf':28}
+        frozen.update(title='Editing preview · '+project['title'],is_editing_preview=True)
     for clip in timeline['clips']+timeline.get('audio',[]):
         path=asset_path(clip['asset_id'])
         asset=db.one('SELECT sha256,project_id FROM assets WHERE id=?',(clip['asset_id'],))
@@ -102,7 +106,6 @@ def queue_export(project_id,automatic=False):
             audio=db.one("SELECT sha256 FROM assets WHERE id=? AND project_id=? AND kind='audio'",(clip['audio_asset_id'],project_id))
             if not audio:raise ValueError('The generated audio sidecar is missing.')
             clip['audio_source_sha256']=audio['sha256']
-    pause(project_id,False)
     return queue_snapshot('export',frozen,automatic=automatic)
 
 

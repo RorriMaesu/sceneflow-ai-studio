@@ -71,6 +71,13 @@ import { ProductionSettings } from "./production-settings";
 import { TimelineEditor } from "./timeline-editor";
 import { BackupPanel, WorkflowImporter, SceneHistory } from "./tools-panels";
 import { AssetQuality } from "./quality-panel";
+import { ProductionInsights } from "./production-insights";
+import {
+  ReadinessCoach,
+  NotificationSettings,
+  StudioBoundary,
+  useCompletionNotifications,
+} from "./studio-care";
 import {
   VisualBible,
   CorrectionCanvas,
@@ -317,6 +324,7 @@ function Studio() {
     cache.invalidateQueries({ queryKey: ["project"] });
     cache.invalidateQueries({ queryKey: ["models"] });
   };
+  useCompletionNotifications(jobs, notify);
   async function act(fn: () => Promise<any>, success = "Saved") {
     setBusy(true);
     try {
@@ -612,8 +620,19 @@ function Studio() {
                   </button>
                 </div>
               )}
-              {page === "Overview" ? (
+              {connection.token && boot.isPending ? (
+                <section className="panel" role="status">
+                  <h2>Reconnecting your local studio…</h2>
+                  <p>Loading saved productions and current jobs.</p>
+                </section>
+              ) : page === "Overview" ? (
                 <>
+                  <ReadinessCoach
+                    data={data}
+                    onSettings={() => go("Settings")}
+                    onModels={() => go("Model Library")}
+                  />
+                  <NotificationSettings />
                   <section className="hero">
                     <div className="hero-copy">
                       <span className="eyebrow">
@@ -948,9 +967,11 @@ function Studio() {
                       </Badge>
                       <span className="muted">
                         {project.scenes.length} scenes ·{" "}
-                        {project.settings.audio_mode === "silent"
-                          ? "Silent production"
-                          : "Audio enabled"}
+                        {(project.timeline?.settings.audio_mode || project.settings.audio_mode) === "silent"
+                          ? "Silent final cut"
+                          : "Sound enabled in final cut"}
+                        {" · AI QA " +
+                          (project.settings.qa_enabled ? "On" : "Off")}
                       </span>
                     </div>
                     <div className="button-row">
@@ -1007,6 +1028,7 @@ function Studio() {
                       act={act}
                     />
                   )}
+                  <ProductionInsights project={project} />
                   {["Storyboard", "Image Studio", "Video Studio"].includes(
                     page,
                   ) ? (
@@ -2135,6 +2157,7 @@ function DirectorPage({
     refetchInterval: 4000,
   });
   const [autoContinue, setAutoContinue] = useState(false);
+  const [allowOperations,setAllowOperations]=useState(false);
   const [model, setModel] = useState(project.settings.llm || "");
   const [count, setCount] = useState(4);
   return (
@@ -2169,6 +2192,11 @@ function DirectorPage({
                   : "Proposed creative changes"}
               </h3>
               <p>{p.body.synopsis || p.body.reply}</p>
+              <ul>
+                {p.impact?.map((line: string, i: number) => (
+                  <li key={i}>{line}</li>
+                ))}
+              </ul>
               <details>
                 <summary>Review every proposed change</summary>
                 <pre
@@ -2213,6 +2241,12 @@ function DirectorPage({
               </div>
             </article>
           ))}
+        {history.data?.commands?.map((command: any) => (
+          <p className="muted" key={command.id}>
+            {command.operation.replaceAll("_", " ")} · {command.status}
+            {command.error ? " · " + command.error : ""}
+          </p>
+        ))}
         <form
           className="director-composer"
           onSubmit={(e) => {
@@ -2221,6 +2255,7 @@ function DirectorPage({
               await request(`/api/projects/${project.id}/director`, {
                 model,
                 message: text,
+                allow_operations:allowOperations,
                 scene_id: selectedScene || null,
               });
               setText("");
@@ -2228,6 +2263,7 @@ function DirectorPage({
             }, "Director request queued. Follow progress in Generation Queue.");
           }}
         >
+          <label><input type="checkbox" checked={allowOperations} onChange={e=>setAllowOperations(e.target.checked)}/> Include generation and queue command proposals</label>
           <textarea
             aria-label="Message your Director"
             rows={4}
@@ -2363,6 +2399,7 @@ function ExportsPage({
             <div className="export-card" key={a.id}>
               <Media asset={a} controls />
               <h3>{a.metadata.title || "Final movie"}</h3>
+              {a.metadata.is_editing_preview && <Badge>Editing preview</Badge>}
               {a.metadata.timeline_revision !== project.timeline?.revision && (
                 <Badge>Earlier timeline revision</Badge>
               )}
@@ -2764,7 +2801,9 @@ const EXAMPLE = [
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={client}>
-      <Studio />
+      <StudioBoundary>
+        <Studio />
+      </StudioBoundary>
     </QueryClientProvider>
   </React.StrictMode>,
 );

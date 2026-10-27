@@ -4,15 +4,15 @@ import math
 def project_settings(values):
     if not isinstance(values,dict):raise ValueError('Project settings must be an object.')
     if 'visual_rules' in values and (not isinstance(values['visual_rules'],str) or len(values['visual_rules'])>6000):raise ValueError('Keep locked visual rules under 6000 characters.')
-    bounds={'scene_count':(1,40),'width':(64,2048),'height':(64,2048),'fps':(1,60),'frames':(1,241),'image_steps':(1,60),'candidates':(1,4),'max_retries':(0,2),'qa_threshold':(0,1)}
+    bounds={'scene_count':(1,40),'width':(64,2048),'height':(64,2048),'fps':(1,60),'frames':(1,241),'image_steps':(1,60),'candidates':(1,4),'video_attempts':(1,4),'run_budget_minutes':(0,1440),'max_retries':(0,2),'qa_threshold':(0,1)}
     for key,(low,high) in bounds.items():
         if key in values and (not isinstance(values[key],(int,float)) or isinstance(values[key],bool) or not math.isfinite(values[key]) or not low<=values[key]<=high):
             raise ValueError(f'{key} must be between {low} and {high}.')
-    for key in ['width','height','fps','frames','image_steps','candidates','max_retries']:
+    for key in ['width','height','fps','frames','image_steps','candidates','video_attempts','max_retries']:
         if key in values and int(values[key])!=values[key]:raise ValueError(f'{key} must be a whole number.')
     for key in ['qa_enabled','qa_auto','qa_regenerate','auto_export','auto_approve_images','auto_approve_videos']:
         if key in values and not isinstance(values[key],bool):raise ValueError(f'{key} must be on or off.')
-    enums={'qa_rubric':['lenient','balanced','strict'],'qa_image_mode':['every','selected','suspicious','off'],'qa_video_mode':['every','suspicious','off'],'audio_mode':['silent','preserve','mixed']}
+    enums={'qa_rubric':['lenient','balanced','strict'],'qa_image_mode':['every','selected','suspicious','off'],'qa_video_mode':['every','suspicious','off'],'audio_mode':['silent','preserve','mixed'],'failure_policy':['continue','stop','partial']}
     for key,options in enums.items():
         if key in values and values[key] not in options:raise ValueError('Unsupported '+key)
     if 'gates' in values and (not isinstance(values['gates'],dict) or set(values['gates'])-{'storyboard','prompts','image','video','timeline'} or any(not isinstance(v,bool) for v in values['gates'].values())):

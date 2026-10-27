@@ -22,6 +22,8 @@ ACTIVE = ('running','submitted','reconciling')
 def migrate():
     with db.connect(True) as con:
         con.execute('CREATE TABLE IF NOT EXISTS production_state(project_id TEXT PRIMARY KEY,paused INTEGER DEFAULT 1,auto_run INTEGER DEFAULT 0)')
+        con.execute('CREATE TABLE IF NOT EXISTS production_runs(project_id TEXT PRIMARY KEY,started REAL,reason TEXT,paused_at REAL DEFAULT 0)')
+        if 'paused_at' not in {r[1] for r in con.execute('PRAGMA table_info(production_runs)')}:con.execute('ALTER TABLE production_runs ADD COLUMN paused_at REAL DEFAULT 0')
         con.execute('INSERT OR IGNORE INTO production_state(project_id) SELECT id FROM projects')
         con.execute('INSERT OR IGNORE INTO migrations VALUES(2,?)', (now(),))
 
@@ -34,7 +36,10 @@ def state(project_id):
 
 
 def pause(project_id, paused=True):
-    state(project_id)
+    previous=state(project_id)
+    if not paused and previous['paused']:
+        db.execute('INSERT OR REPLACE INTO production_runs VALUES(?,?,NULL,0)',(project_id,now()))
+    if paused:db.execute('INSERT INTO production_runs VALUES(?,?,NULL,?) ON CONFLICT(project_id) DO UPDATE SET paused_at=excluded.paused_at',(project_id,now(),now()))
     db.execute('UPDATE production_state SET paused=? WHERE project_id=?', (int(paused), project_id))
     db.event('production.paused' if paused else 'production.resumed', {'project_id': project_id})
     return {'paused': paused}
@@ -179,11 +184,15 @@ def produce(project_id, scope='all', scene_id=None):
                 variant=copy.deepcopy(snap);variant['seed']+=candidate;variant['candidate_index']=candidate
                 plans.append(('image',variant))
         elif scope in ['videos','selected_video'] or (scope=='all' and not current_video(scene)):
-            plans.append(('video',snapshot_for(scene,project,'video',source)))
+            plans.extend(('video',variant) for variant in video_variants(snapshot_for(scene,project,'video',source),project))
     # Validate every requested scene before adding any jobs.
     state(project_id)
     with db.connect(True) as con:
-        con.execute('UPDATE production_state SET paused=0,auto_run=? WHERE project_id=?',(int(automatic) if scope=='all' else state(project_id)['auto_run'],project_id))
+        previous=state(project_id)
+        con.execute('UPDATE production_state SET paused=?,auto_run=? WHERE project_id=?',(previous['paused'] if scope.startswith('selected') else 0,int(automatic) if scope=='all' else previous['auto_run'],project_id))
+        if scope=='all':con.execute('INSERT OR REPLACE INTO production_runs VALUES(?,?,NULL,0)',(project_id,now()))
+    if scope.startswith('selected'):
+        for _,snapshot in plans:snapshot.update(manual_override=True,manual_requested_at=now())
     jobs = [queue_snapshot(kind,snap,automatic=automatic,force=scope.startswith('selected'),priority=30 if scope.startswith('selected') else 0) for kind,snap in plans]
     if automatic and project['mode']=='hybrid' and project['settings'].get('gates',{}).get('image',True):
         for job in jobs:
@@ -198,12 +207,22 @@ def produce(project_id, scope='all', scene_id=None):
     return {'jobs':[j['id'] for j in jobs],'planned':len(jobs),'reused_scenes':len(scenes)-len(jobs)}
 
 
+def video_variants(snapshot,project):
+    count=int(project['settings'].get('video_attempts',1))
+    if not 1<=count<=4:raise ValueError('Choose one to four attempts per new video stage.')
+    variants=[]
+    for index in range(count):
+        variant=copy.deepcopy(snapshot);variant['candidate_index']=index;variant['seed']+=index;variants.append(variant)
+    return variants
+
+
 def supersede_pending(scene_id):
     scene = db.scene(scene_id)
     project = db.project(scene['project_id'])
     pending = db.all("SELECT * FROM jobs WHERE scene_id=? AND status IN ('queued','awaiting_review')",(scene_id,))
     for job in pending:
         old = json.loads(job['snapshot'])
+        if old.get('edit_operation'):continue
         source = current_source(scene) if job['kind']=='video' else None
         if job['kind']=='video' and not source:
             db.execute("UPDATE jobs SET status='superseded',finished=? WHERE id=? AND status IN ('queued','awaiting_review')",(now(),job['id']))
@@ -215,6 +234,8 @@ def supersede_pending(scene_id):
             continue
         new = snapshot_for(scene,project,job['kind'],source)
         new['continue_video'] = old.get('continue_video',False)
+        new['manual_override']=old.get('manual_override',False)
+        if old.get('manual_requested_at'):new['manual_requested_at']=old['manual_requested_at']
         new['candidate_index']=old.get('candidate_index',0)
         new['seed']+=new['candidate_index']
         # Preserve queued inputs unless a generation-relevant field changed.
@@ -233,7 +254,8 @@ def approve_and_continue(asset_id):
     for pending in db.all("SELECT id,snapshot FROM jobs WHERE scene_id=? AND status='awaiting_review' AND kind='video'",(scene['id'],)):
         if json.loads(pending['snapshot']).get('source_asset_id')==asset_id:update_job(pending['id'],'queued',error=None)
     if asset['kind']=='image' and state(project['id'])['auto_run'] and project['mode']!='manual':
-        if not current_video(scene):queue_snapshot('video',snapshot_for(scene,project,'video',asset),automatic=True)
+        if not current_video(scene):
+            for variant in video_variants(snapshot_for(scene,project,'video',asset),project):queue_snapshot('video',variant,automatic=True)
     return result
 
 
@@ -258,6 +280,7 @@ class Dispatcher:
         migrate()
         from .director import migrate as migrate_director
         migrate_director()
+        db.execute("UPDATE director_commands SET status='needs_attention',error='Agent restarted during a reviewed command. Inspect queued work before requesting it again.' WHERE status='running'")
         db.execute("UPDATE jobs SET status='needs_attention',error='Agent restarted during a local AI request. Review any saved proposal before explicitly retrying.' WHERE status='running' AND kind IN ('plan','director','qa')")
         for job in db.all("SELECT id FROM jobs WHERE status='running' AND kind='export'"):
             marker=ROOT/'temp'/('export-'+job['id'])/'worker.json'
@@ -287,6 +310,8 @@ class Dispatcher:
     async def loop(self):
         while not self.stopping:
             try:
+                from .director import run_commands
+                await run_commands()
                 active = db.one("SELECT * FROM jobs WHERE status IN ('submitted','reconciling','running') ORDER BY created LIMIT 1")
                 if active:
                     await self.reconcile(active)
@@ -310,11 +335,19 @@ class Dispatcher:
             project = db.one('SELECT id,mode,archived,settings FROM projects WHERE id=?',(job['project_id'],))
             control = state(job['project_id'])
             snap = json.loads(job['snapshot'])
+            run=db.one('SELECT * FROM production_runs WHERE project_id=?',(project['id'],))
+            explicit=not snap.get('automatic') and (job['kind'] in ['export','qa'] or snap.get('manual_override')) and snap.get('manual_requested_at',job['created'])>(run['paused_at'] if run else 0)
             if job['scene_id'] and db.scene(job['scene_id'])['body'].get('disabled'):
                 continue
-            if control['paused'] or project['archived'] or (project['mode']=='manual' and snap.get('automatic')):
+            if (control['paused'] and not explicit) or project['archived'] or (project['mode']=='manual' and snap.get('automatic')):
                 continue
             config=json.loads(project['settings'])
+            budget=float(config.get('run_budget_minutes',0))
+            if snap.get('automatic') and budget>0 and job['kind']!='export':
+                if not run:db.execute('INSERT INTO production_runs VALUES(?,?,NULL,0)',(project['id'],now()))
+                elif now()-run['started']>=budget*60:
+                    pause(project['id'],True);db.execute('UPDATE production_runs SET reason=? WHERE project_id=?',('Elapsed production budget reached. Resume starts a fresh budget window.',project['id']))
+                    update_job(job['id'],'queued',error='Production time budget reached. The last active job was allowed to finish. Resume to start a new budget window.');continue
             if snap.get('automatic') and job['kind']=='video' and config.get('qa_enabled') and config.get('qa_auto',True) and config.get('qa_image_mode','every')!='off' and not db.one('SELECT id FROM assets WHERE id=? AND approved=1',(snap['source_asset_id'],)):
                 update_job(job['id'],'awaiting_review',error='Review or approve the selected still before automatic animation.');continue
             if project['mode']=='hybrid' and snap.get('automatic') and job['kind'] in ['image','video']:
@@ -431,6 +464,34 @@ class Dispatcher:
         except Exception as error:
             log.exception('Job %s failed',job['id'])
             update_job(job['id'],'failed',error=str(error)[:1800],finished=now())
+            await self.failure_policy(job)
+
+    async def failure_policy(self,job):
+        snap=json.loads(job['snapshot'])
+        if not snap.get('automatic'):return
+        project=db.project(job['project_id'])
+        if project['settings'].get('failure_policy','continue')=='stop':
+            pause(project['id'],True)
+            db.execute('UPDATE production_runs SET reason=? WHERE project_id=?',('An automatic job failed. Review it before resuming.',project['id']))
+        elif job['kind'] in ['image','video','qa']:await self.maybe_partial(project['id'])
+
+    async def maybe_partial(self,project_id):
+        from .exports import save_timeline,queue_export
+        project=db.project(project_id);config=project['settings'];gates=config.get('gates',{})
+        if config.get('failure_policy')!='partial' or not config.get('auto_export',True) or not state(project_id)['auto_run'] or project['mode']=='manual' or (project['mode']=='hybrid' and gates.get('timeline',True)):return
+        if db.one("SELECT id FROM jobs WHERE project_id=? AND (kind IN ('image','video') OR (kind='qa' AND json_extract(snapshot,'$.automatic')=1)) AND status IN ('queued','running','submitted','reconciling','awaiting_review')",(project_id,)):return
+        run=db.one('SELECT started FROM production_runs WHERE project_id=?',(project_id,))
+        if not db.one("SELECT id FROM jobs WHERE project_id=? AND kind IN ('image','video','qa') AND status='failed' AND created>=?",(project_id,run['started'] if run else 0)):return
+        clips=[]
+        for scene in project['scenes']:
+            asset=current_video(scene)
+            if not asset or not asset['approved'] or scene['body'].get('disabled'):continue
+            meta=json.loads(asset['metadata']);clips.append({'id':uid(),'scene_id':scene['id'],'asset_id':asset['id'],'trim_in':0,'trim_out':meta['duration'],'speed':1,'volume':1,'mute':False,'transition':'inherit'})
+        timeline=project['timeline']
+        if not clips or timeline['settings'].get('manual_edit'):return
+        if [c['asset_id'] for c in timeline['clips']]!=[c['asset_id'] for c in clips] or not timeline['settings'].get('partial'):
+            save_timeline(project_id,timeline['revision'],clips,timeline.get('audio',[]),{**timeline['settings'],'partial':True},automatic=True)
+        queue_export(project_id,automatic=True)
 
     async def progress_listener(self,job):
         url=settings['comfy_url'].replace('http:','ws:')+'/ws?clientId=sceneflow-'+job['id']
@@ -511,6 +572,7 @@ class Dispatcher:
             return
         except Exception as error:
             update_job(job['id'],'failed',error=str(error)[:1800],finished=now())
+            await self.failure_policy(job)
 
     async def complete(self,job,assets):
         snap=json.loads(job['snapshot'])
@@ -559,12 +621,14 @@ class Dispatcher:
                     if json.loads(waiting['snapshot']).get('source_asset_id')==candidate['id']:update_job(waiting['id'],'queued',error=None)
         if current and auto_approve and not already_selected and job['kind']=='image' and state(project['id'])['auto_run'] and project['mode']!='manual':
             new_snap=snapshot_for(db.scene(scene['id']),project,'video',candidate)
-            queue_snapshot('video',new_snap,automatic=True,dependencies=[job['id']])
+            for variant in video_variants(new_snap,project):queue_snapshot('video',variant,automatic=True,dependencies=[job['id']])
         if job['kind']=='video' and auto_approve:
             await self.maybe_export(project['id'])
+            await self.maybe_partial(project['id'])
 
     async def maybe_export(self,project_id):
         project=db.project(project_id)
+        if db.one("SELECT id FROM jobs WHERE project_id=? AND (kind IN ('image','video') OR (kind='qa' AND json_extract(snapshot,'$.automatic')=1)) AND status IN ('queued','running','submitted','reconciling','awaiting_review')",(project_id,)):return
         gates=project['settings'].get('gates',{})
         can_export=project['mode']=='automatic' or (project['mode']=='hybrid' and not gates.get('timeline',True))
         included=[s for s in project['scenes'] if not s['body'].get('disabled')]

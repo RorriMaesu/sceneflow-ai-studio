@@ -66,8 +66,8 @@ async def retry(identifier:str,values:dict|None=None,session=Depends(require_ses
         raise HTTPException(409,'The original submission is uncertain. Review backend queue/history and explicitly confirm before retrying.')
     if job['status'] not in ['failed','cancelled','needs_attention']:
         raise HTTPException(409,'Only failed, cancelled, or explicitly reviewed uncertain jobs can be retried.')
-    pause(job['project_id'],False)
-    return queue_snapshot(job['kind'],json.loads(job['snapshot']),force=True,priority=30)
+    frozen=json.loads(job['snapshot']);frozen.update(manual_override=True,manual_requested_at=now())
+    return queue_snapshot(job['kind'],frozen,force=True,priority=30)
 
 
 @router.post('/jobs/{identifier}/cancel')
@@ -183,4 +183,10 @@ async def timeline(identifier:str,values:dict,session=Depends(require_session)):
 @router.post('/projects/{identifier}/export')
 async def export(identifier:str,session=Depends(require_session)):
     job=queue_export(identifier)
+    return {'job_id':job['id']}
+
+
+@router.post('/projects/{identifier}/preview')
+async def editing_preview(identifier:str,session=Depends(require_session)):
+    job=queue_export(identifier,preview=True)
     return {'job_id':job['id']}

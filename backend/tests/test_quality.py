@@ -97,3 +97,13 @@ def test_selected_only_qa_keeps_other_candidates_unselected(quality,monkeypatch)
     asyncio.run(m['production'].Dispatcher().complete(job,[asset]))
     assert not store.scene(s['id'])['selected_image_id']
     assert not store.one('SELECT approved FROM assets WHERE id=?',(asset['id'],))['approved']
+
+
+def test_acceptance_conflicts_require_human_review(quality):
+    _,m,*_=quality
+    normalize=m['quality'].consistent_review
+    base={'overall_score':1,'recommendation':'accept','issues':[],'confidence':'high','prompt_adherence':1,'visual_quality':1,'character_consistency':1}
+    assert normalize(base,{'qa_rubric':'balanced'})['recommendation']=='accept'
+    for change in [{'issues':[{'severity':'high','description':'Wrong character'}]},{'confidence':'low'},{'prompt_adherence':.2},{'overall_score':.2}]:
+        result=normalize({**base,**change},{'qa_rubric':'balanced'})
+        assert result['recommendation']=='review' and result['raw_recommendation']=='accept'

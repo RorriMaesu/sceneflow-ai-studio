@@ -19,6 +19,7 @@ class RequestAI(BaseModel):
     scene_id:str|None=None
     auto_apply:bool=False
     auto_continue:bool=False
+    allow_operations:bool=False
 
 
 @router.get('/language-models')
@@ -41,7 +42,7 @@ def queue_ai(identifier,body,kind):
     if kind=='director':
         snapshot['recent']=list(reversed(db.all('SELECT role,content FROM chat WHERE project_id=? ORDER BY created DESC LIMIT 4',(identifier,))))
         db.execute('INSERT INTO chat VALUES(?,?,?,?,?)',(uid(),identifier,'user',body.message,now()))
-    pause(identifier,False)
+    snapshot.update(manual_override=True,manual_requested_at=now())
     job=queue_snapshot(kind,snapshot,force=True,priority=40)
     return {'job_id':job['id']}
 
@@ -62,7 +63,9 @@ async def history(identifier:str,session=Depends(require_session)):
     proposals=db.all('SELECT * FROM proposals WHERE project_id=? ORDER BY created DESC LIMIT 30',(identifier,))
     for item in proposals:
         item['body']=json.loads(item['body']);item['scene_revisions']=json.loads(item['scene_revisions'])
-    return {'chat':db.all('SELECT * FROM chat WHERE project_id=? ORDER BY created LIMIT 500',(identifier,)),'proposals':proposals}
+        from .director import impact
+        item['impact']=impact(item)
+    return {'chat':db.all('SELECT * FROM chat WHERE project_id=? ORDER BY created LIMIT 500',(identifier,)),'proposals':proposals,'commands':db.all('SELECT * FROM director_commands WHERE project_id=? ORDER BY created DESC LIMIT 30',(identifier,))}
 
 
 @router.post('/proposals/{identifier}/apply')

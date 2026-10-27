@@ -98,7 +98,7 @@ async def correct(identifier:str,body:Correction,session=Depends(require_session
     edited={**scene,'body':{**scene['body'],'image_workflow':'qwen-image-21-reference','image_prompt':body.prompt,'reference_asset_ids':[r['id'] for r in refs],'seed':body.seed}}
     snap=snapshot_for(edited,project,'image',config=config)
     snap.update(reference_assets=refs,reference_asset_ids=[r['id'] for r in refs],source_asset_id=identifier,source_sha256=source['sha256'],edit_operation=True,edit_strength=body.strength,mask_asset_id=mask['id'] if mask else None,mask_sha256=mask['sha256'] if mask else None)
-    pause(project['id'],False)
+    snap['manual_override']=True
     return queue_snapshot('image',snap,force=True,priority=30)
 
 

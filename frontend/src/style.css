@@ -2257,4 +2257,120 @@ main {
 .comparison-pair {
   grid-template-columns: 1fr 1fr;
 }
-.correction-expanded{position:fixed;inset:28px;z-index:90;background:#141219;border:1px solid #716084;border-radius:18px;padding:24px;overflow:auto;box-shadow:0 20px 100px #000b}.correction-expanded .correction-scroll{height:min(55vh,550px)}.correction-expanded .comparison-pair img{height:240px}.correction-expanded summary{font-size:20px}
+.correction-expanded {
+  position: fixed;
+  inset: 28px;
+  z-index: 90;
+  background: #141219;
+  border: 1px solid #716084;
+  border-radius: 18px;
+  padding: 24px;
+  overflow: auto;
+  box-shadow: 0 20px 100px #000b;
+}
+.correction-expanded .correction-scroll {
+  height: min(55vh, 550px);
+}
+.correction-expanded .comparison-pair img {
+  height: 240px;
+}
+.correction-expanded summary {
+  font-size: 20px;
+}
+.assembled-preview {
+  border: 1px solid #40364d;
+  background: #0b0a10;
+  border-radius: 16px;
+  padding: 18px;
+  margin: 20px 0;
+}
+.preview-picture {
+  max-width: 760px;
+  margin: 0 auto 15px;
+  background: #000;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.preview-picture video {
+  width: 100%;
+  max-height: 440px;
+  display: block;
+}
+.assembled-preview input[type="range"] {
+  width: 100%;
+}
+.timeline-ruler {
+  display: flex;
+  gap: 3px;
+  margin: 10px 0;
+}
+.timeline-ruler button {
+  border: 1px solid #433b4f;
+  background: #211c2c;
+  color: #c7c2d4;
+  min-width: 35px;
+  padding: 12px 6px;
+  border-radius: 7px;
+  font-size: 11px;
+}
+.timeline-ruler button.selected {
+  background: #6b4d9e;
+  color: #fff;
+}
+.audio-waveform {
+  margin: 12px 0;
+  color: #ab94de;
+}
+.audio-waveform svg {
+  height: 62px;
+  width: 100%;
+  background: #17131e;
+  border-radius: 7px;
+}
+.audio-waveform figcaption {
+  font-size: 10px;
+  color: #aaa;
+}
+.trim-handles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 12px 0;
+}
+.trim-handles input {
+  width: 100%;
+}
+.readiness-coach {
+  margin: 18px 0;
+}
+.readiness-steps {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 15px 0;
+}
+.readiness-steps span {
+  padding: 9px 13px;
+  border-radius: 8px;
+  background: #28212c;
+  color: #b7a6bd;
+  font-size: 11px;
+}
+.readiness-steps .ready {
+  background: #1b302b;
+  color: #99d9bd;
+}
+.timing-table {
+  max-height: 240px;
+  overflow: auto;
+}
+.timing-table p {
+  padding: 9px;
+  border-bottom: 1px solid #302b38;
+  font-size: 11px;
+}
+.fatal-recovery {
+  max-width: 700px;
+  margin: 15vh auto;
+  padding: 30px;
+}

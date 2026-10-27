@@ -72,3 +72,39 @@ def test_bounded_context_has_one_detailed_scene(director):
     assert len(value['selected_scenes'])==1
     assert value['selected_scenes'][0]['id']==b['id']
     assert len(json.dumps(value))<12000
+
+
+def test_duration_seed_edits_and_reviewed_command_are_saved_atomically(director,monkeypatch):
+    m,store,p,a,b=director
+    store.execute("INSERT INTO jobs(id,project_id,kind,status,snapshot,dependencies) VALUES(?,?,?,?,?,'[]')",('job',p['id'],'director','completed',json.dumps({'allow_operations':True})))
+    body={'reply':'Shorten and regenerate A','actions':[{'action':'revise_scene','scene_id':a['id'],'duration':2,'seed':77},{'action':'regenerate_still','scene_id':a['id']}]}
+    identifier=m.add_proposal(p,'job','director',body);m.apply_proposal(identifier)
+    updated=store.scene(a['id']);assert updated['body']['duration']==2 and updated['body']['seed']==77
+    command=store.one('SELECT * FROM director_commands');assert command['target_revision']==updated['revision'] and command['status']=='pending'
+    seen=[]
+    production=importlib.import_module('studio.production');monkeypatch.setattr(production,'produce',lambda pid,scope,sid:seen.append((pid,scope,sid)))
+    registry=importlib.import_module('studio.adapters').registry;monkeypatch.setattr(registry,'info',{'ready':{}})
+    asyncio.run(m.run_commands())
+    assert seen==[(p['id'],'selected_still',a['id'])]
+    assert store.one('SELECT status FROM director_commands')['status']=='completed'
+    asyncio.run(m.run_commands());assert len(seen)==1
+
+
+def test_approved_command_rejects_later_project_setting_changes(director):
+    m,store,p,a,b=director
+    store.execute("INSERT INTO jobs(id,project_id,kind,status,snapshot,dependencies) VALUES(?,?,?,?,?,'[]')",('job',p['id'],'director','completed',json.dumps({'allow_operations':True})))
+    identifier=m.add_proposal(p,'job','director',{'reply':'Regenerate A','actions':[{'action':'regenerate_still','scene_id':a['id']}]});current=m.apply_proposal(identifier)
+    store.update_project(p['id'],current['revision'],{'settings':{'image_steps':25}})
+    asyncio.run(m.run_commands())
+    assert store.one('SELECT status FROM director_commands')['status']=='failed'
+    assert all(job['kind']=='director' for job in store.jobs(p['id']))
+
+
+def test_setting_edits_cannot_be_disguised_as_generation_commands(director):
+    m,store,p,a,b=director
+    with pytest.raises(ValueError,match='cannot carry'):
+        m.DirectorAction(action='regenerate_video',scene_id=a['id'],duration=1.5,seed=773)
+    with pytest.raises(ValueError):m.CreativeReply(reply='Wrong operation',actions=[{'action':'regenerate_video','scene_id':a['id']}])
+    identifier=m.add_proposal(p,'unapproved-command-job','director',{'reply':'Wrong operation','actions':[{'action':'regenerate_video','scene_id':a['id']}]})
+    with pytest.raises(ValueError,match='creative edits only'):m.apply_proposal(identifier)
+    assert not store.all('SELECT * FROM director_commands') and store.project(p['id'])['revision']==p['revision']
