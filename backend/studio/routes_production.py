@@ -18,8 +18,9 @@ router=APIRouter(prefix='/api')
 
 
 class ProductionInput(BaseModel):
-    scope:str=Field(default='all',pattern='^(all|stills|videos|selected_still|selected_video)$')
+    scope:str=Field(default='all',pattern='^(all|stills|videos|selected_still|selected_video|missing_stills|missing_videos)$')
     scene_id:str|None=None
+    scene_ids:list[str]|None=Field(default=None,max_length=200)
 
 
 @router.get('/workflows')
@@ -42,7 +43,7 @@ async def production(identifier:str,body:ProductionInput,session=Depends(require
     from .production import Dispatcher
     dispatcher=Dispatcher()
     if body.scope=='all':await dispatcher.reuse_completed(identifier)
-    result=produce(identifier,body.scope,body.scene_id)
+    result=produce(identifier,body.scope,body.scene_id,body.scene_ids)
     if body.scope=='all':await dispatcher.maybe_export(identifier)
     return result
 

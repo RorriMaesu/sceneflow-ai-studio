@@ -171,10 +171,19 @@ def current_video(scene):
     return asset if job and snapshot_is_current(json.loads(job['snapshot']),scene,project,'video') else None
 
 
-def produce(project_id, scope='all', scene_id=None):
+def produce(project_id, scope='all', scene_id=None,scene_ids=None):
     project = db.project(project_id)
     scenes = [s for s in project['scenes'] if s['id']==scene_id] if scope.startswith('selected') else project['scenes']
     scenes=[s for s in scenes if not s['body'].get('disabled')]
+    missing=scope in ['missing_stills','missing_videos']
+    if scene_ids is not None:
+        if not missing or not scene_ids or len(set(scene_ids))!=len(scene_ids) or set(scene_ids)-{s['id'] for s in scenes}:raise ValueError('Choose different scenes owned by this project for the requested stage.')
+        scenes=[s for s in scenes if s['id'] in scene_ids]
+    if missing:
+        scenes=[s for s in scenes if not (current_source(s) if scope=='missing_stills' else current_video(s))]
+        if scope=='missing_videos':
+            scenes=[s for s in scenes if current_source(s) and current_source(s)['approved']]
+        if not scenes:return {'jobs':[],'planned':0,'reused_scenes':0}
     if not scenes:
         raise ValueError('Add or select a scene first.')
     automatic = scope=='all' and project['mode']!='manual'
@@ -183,7 +192,7 @@ def produce(project_id, scope='all', scene_id=None):
         if scope=='all' and current_video(scene):
             continue
         source = current_source(scene) if scope=='all' else selected_source(scene)
-        if scope in ['stills','selected_still'] or (scope=='all' and not source):
+        if scope in ['stills','selected_still','missing_stills'] or (scope=='all' and not source):
             snap = snapshot_for(scene,project,'image')
             snap['continue_video'] = automatic
             count=int(project['settings'].get('candidates',1))
@@ -192,15 +201,15 @@ def produce(project_id, scope='all', scene_id=None):
             for candidate in range(count):
                 variant=copy.deepcopy(snap);variant['seed']+=candidate;variant['candidate_index']=candidate
                 plans.append(('image',variant))
-        elif scope in ['videos','selected_video'] or (scope=='all' and not current_video(scene)):
+        elif scope in ['videos','selected_video','missing_videos'] or (scope=='all' and not current_video(scene)):
             plans.extend(('video',variant) for variant in video_variants(snapshot_for(scene,project,'video',source),project))
     # Validate every requested scene before adding any jobs.
     state(project_id)
     with db.connect(True) as con:
         previous=state(project_id)
-        con.execute('UPDATE production_state SET paused=?,auto_run=? WHERE project_id=?',(previous['paused'] if scope.startswith('selected') else 0,int(automatic) if scope=='all' else previous['auto_run'],project_id))
+        con.execute('UPDATE production_state SET paused=?,auto_run=? WHERE project_id=?',(previous['paused'] if scope.startswith('selected') or missing else 0,int(automatic) if scope=='all' else previous['auto_run'],project_id))
         if scope=='all':con.execute('INSERT OR REPLACE INTO production_runs VALUES(?,?,NULL,0)',(project_id,now()))
-    if scope.startswith('selected'):
+    if scope.startswith('selected') or missing:
         for _,snapshot in plans:snapshot.update(manual_override=True,manual_requested_at=now())
     jobs = [queue_snapshot(kind,snap,automatic=automatic,force=scope.startswith('selected'),priority=30 if scope.startswith('selected') else 0) for kind,snap in plans]
     if automatic and project['mode']=='hybrid' and project['settings'].get('gates',{}).get('image',True):

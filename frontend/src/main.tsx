@@ -73,6 +73,10 @@ import { BackupPanel, WorkflowImporter, SceneHistory } from "./tools-panels";
 import { AssetQuality } from "./quality-panel";
 import { ProductionInsights } from "./production-insights";
 import {ProjectStatus} from "./project-status";
+import {ProjectSteps,NextStep,StoryGuide,HelpPage} from "./guided-project";
+import {PAGE_NAMES,STEPS} from "./flow";
+import {NewVideoWizard} from "./new-video";
+import type {NewVideoOptions} from "./new-video";
 import { MaintenancePanel } from "./maintenance-panel";
 import {
   ReadinessCoach,
@@ -91,17 +95,9 @@ const client = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
 });
 const NAV: [string, LucideIcon, string][] = [
-  ["Overview", Grid2X2, "workspace"],
-  ["Storyboard", Layers, "workspace"],
-  ["AI Director", Sparkles, "workspace"],
-  ["Image Studio", ImageIcon, "production"],
-  ["Video Studio", Video, "production"],
-  ["Generation Queue", Activity, "production"],
-  ["Timeline", Film, "production"],
-  ["Exports", Download, "production"],
-  ["Model Library", Clapperboard, "studio"],
-  ["Settings", SettingsIcon, "studio"],
+  ['Overview',Grid2X2,'workspace'],['Generation Queue',Activity,'workspace'],['Help',MessageCircle,'studio'],['Settings',SettingsIcon,'studio'],
 ];
+const SEARCH_NAV:[string,LucideIcon,string][]=[...NAV,['Storyboard',Layers,'video'],['Image Studio',ImageIcon,'video'],['Video Studio',Video,'video'],['Timeline',Film,'video'],['Exports',Download,'video'],['AI Director',Sparkles,'video'],['Model Library',Clapperboard,'studio']];
 const MODES: { id: Mode; name: string; description: string }[] = [
   {
     id: "automatic",
@@ -425,13 +421,23 @@ function Studio() {
       socket?.close();
     };
   }, [connection.token, connection.url]);
-  async function newProject(title: string, brief: string, example = false) {
+  async function newProject(title: string, brief: string, example = false, options?:NewVideoOptions) {
     const created = await act(async () => {
-      const p = await request<Project>("/api/projects", {
-        title,
-        brief,
-        mode: "hybrid",
+      let p = await request<Project>("/api/projects", {
+        title,brief:options?brief+`\nPlanning target: about ${options.length} seconds.`:brief,
+        mode:options?.mode||"hybrid",
+        settings:options?{llm:options.model,scene_count:Math.ceil(options.length/4),width:options.shape==='portrait'?256:options.shape==='square'?384:640,height:options.shape==='portrait'?448:options.shape==='square'?384:352,image_steps:20}:{},
       });
+      choose(p.id);
+      try{
+        if(options){
+          const [width,height]=options.shape==='portrait'?[1080,1920]:options.shape==='square'?[1080,1080]:[1920,1080];
+          await request(`/api/projects/${p.id}/timeline`,{...p.timeline,settings:{...p.timeline.settings,width,height}},'PATCH');
+          if(options.reference){const imported=await upload(`/api/projects/${p.id}/references/import`,options.reference);p=await request(`/api/projects/${p.id}`,{revision:p.revision,settings:{reference_asset_ids:[imported.asset_id]}},'PATCH');}
+          if(options.plan&&options.model&&brief.trim()){await request(`/api/projects/${p.id}/plan`,{model:options.model,scene_count:Math.ceil(options.length/4),auto_apply:false,auto_continue:false});go('AI Director');}
+        }
+      }catch(error){notify('Your video was created. Setup needs attention: '+(error as Error).message);}
+
       if (example) {
         for (const [name, description] of EXAMPLE) {
           await request(`/api/projects/${p.id}/scenes`, {
@@ -446,11 +452,12 @@ function Studio() {
         }
       }
       return p;
-    }, "Project created");
+    }, options ? "" : "Project created");
     if (created) {
-      choose(created.id);
-      setNewOpen(false);
+      if(!options)choose(created.id);
+      if(!options)setNewOpen(false);
     }
+    return created;
   }
   async function modeChange(mode: Mode) {
     if (project)
@@ -529,8 +536,9 @@ function Studio() {
         <div className="workspace-label">
           YOUR LOCAL STUDIO
         </div>
+        <button className="button primary sidebar-create" onClick={()=>connection.token?setNewOpen(true):setPairOpen(true)}>+ Create a video</button>
         <nav>
-          {["workspace", "production", "studio"].map((group) => (
+          {["workspace", "production", "studio"].filter(group=>NAV.some(n=>n[2]===group)).map((group) => (
             <React.Fragment key={group}>
               <div className="nav-label">{group}</div>
               {NAV.filter((n) => n[2] === group).map(([label, Icon]) => (
@@ -541,7 +549,7 @@ function Studio() {
                   aria-current={page===label?"page":undefined}
                 >
                   <Icon size={18} />
-                  <span>{label}</span>
+                  <span>{PAGE_NAMES[label]||label}</span>
                   {label === "Generation Queue" && pending.length > 0 && (
                     <small>{pending.length}</small>
                   )}
@@ -580,7 +588,7 @@ function Studio() {
             </button>
             <span>Workspace</span>
             <ChevronRight size={14} />
-            <strong>{page}</strong>
+            <strong>{PAGE_NAMES[page]||page}</strong>
           </div>
           <div className="top-actions">
             <button
@@ -637,16 +645,16 @@ function Studio() {
                     onSettings={() => go("Settings")}
                     onModels={() => go("Model Library")}
                   />
-                  <NotificationSettings />
+
                   <section className="hero">
                     <div className="hero-copy">
                       <span className="eyebrow">
                         <span /> YOUR IDEAS. IN MOTION.
                       </span>
                       <h1>
-                        A little imagination.
+                        What would you like to make?
                         <br />
-                        <em>Endless possibilities.</em>
+                        <em>Your next video starts here.</em>
                       </h1>
                       <p>
                         Turn a spark of an idea into something worth watching.
@@ -663,16 +671,9 @@ function Studio() {
                           }
                         >
                           <Plus size={17} />
-                          Create a project
+                          Create a video
                         </Button>
-                        <Button
-                          onClick={() => {
-                            connection.token ? setNewOpen(true) : setPairOpen(true);
-                          }}
-                        >
-                          <Sparkles size={16} />
-                          Create with AI
-                        </Button>
+                        <Button onClick={()=>go('Help')}>How it works</Button>
                       </div>
                     </div>
                     <div className="hero-art" aria-hidden="true">
@@ -707,7 +708,7 @@ function Studio() {
                     <div className="section-heading">
                       <div>
                         <h2>
-                          Your productions{" "}
+                          My videos{" "}
                           <span>{data?.projects.length || 0}</span>
                         </h2>
                         <p>Every great story starts somewhere.</p>
@@ -722,7 +723,7 @@ function Studio() {
                         }
                       >
                         <Plus size={16} />
-                        New project
+                        Create a video
                       </Button>
                     </div>
                     {data?.projects.length ? (
@@ -896,11 +897,14 @@ function Studio() {
                     </div>
                   </section>
                 </>
+              ) : page === 'Help' ? <HelpPage go={go}/> : page === 'Generation Queue' ? (
+                <ActivityView projects={data?.projects||[]} jobs={jobs} act={act} active={active} choose={choose}/>
               ) : page === "Settings" ? (
                 <SettingsPage
                   project={project}
                   data={data}
                   act={act}
+                  go={go}
                   onPair={() => setPairOpen(true)}
                 />
               ) : page === "Model Library" ? (
@@ -929,10 +933,10 @@ function Studio() {
                         onClick={() => go("Overview")}
                       >
                         <ArrowLeft size={14} />
-                        All productions
+                        My videos
                       </button>
                       <h1>{project.title}</h1>
-                      <p>
+                      <p className="project-brief-summary">
                         {project.brief ||
                           "Your next story, one scene at a time."}
                       </p>
@@ -963,65 +967,11 @@ function Studio() {
                     </div>
                   </div>
                   <ProjectStatus project={project} jobs={jobs} act={act}/>
-                  <div className="production-controls">
-                    <div>
-                      <Badge tone="violet">
-                        {MODES.find((m) => m.id === project.mode)?.description}
-                      </Badge>
-                      <span className="muted">
-                        {project.scenes.length} scenes ·{" "}
-                        {(project.timeline?.settings.audio_mode ||
-                          project.settings.audio_mode) === "silent"
-                          ? "Silent final cut"
-                          : "Sound enabled in final cut"}
-                        {" · AI QA " +
-                          (project.settings.qa_enabled ? "On" : "Off")}
-                      </span>
-                    </div>
-                    <div className="button-row">
-                      <Button
-                        onClick={() => produce("stills")}
-                        disabled={featurePhase < 2 || busy}
-                      >
-                        <ImageIcon size={15} />
-                        Generate stills
-                      </Button>
-                      <Button
-                        onClick={() => produce("videos")}
-                        disabled={featurePhase < 2 || busy}
-                      >
-                        <Video size={15} />
-                        Generate videos
-                      </Button>
-                      <Button
-                        primary
-                        onClick={() => produce("all")}
-                        disabled={featurePhase < 2 || busy}
-                      >
-                        <Sparkles size={15} />
-                        {project.mode === "manual"
-                          ? "Generate all"
-                          : "Auto Produce"}
-                      </Button>
-
-                    </div>
-                  </div>
-                  <VisualBible
-                    key={project.id}
-                    project={project}
-                    act={act}
-                    renderMedia={(a) => <Media asset={a} />}
-                  />
-                  {featurePhase >= 3 && (
-                    <ProductionSettings
-                      key={project.id}
-                      project={project}
-                      workflows={models.data || []}
-                      models={data?.services.ollama.models || []}
-                      act={act}
-                    />
-                  )}
-                  <ProductionInsights project={project} />
+                  <ProjectSteps project={project} page={page} go={go}/>
+                  <NextStep project={project} jobs={jobs} page={page} go={go} act={act} busy={busy}/>
+                  {page==='Storyboard'&&<StoryGuide project={project} go={go}/>}
+                  {page==='Image Studio'&&<VisualBible key={project.id} project={project} act={act} renderMedia={a=><Media asset={a}/>}/>}
+                  <details className="project-advanced"><summary>Video settings & advanced controls</summary><p>{MODES.find(m=>m.id===project.mode)?.description} Sound can be added in Edit. AI quality checking is {project.settings.qa_enabled?'on':'off'}.</p><ProductionSettings key={project.id} project={project} workflows={models.data||[]} models={data?.services.ollama.models||[]} act={act}/><ProductionInsights project={project}/><BackupPanel project={project} act={act}/></details>
                   {["Storyboard", "Image Studio", "Video Studio"].includes(
                     page,
                   ) ? (
@@ -1032,7 +982,7 @@ function Studio() {
                         <div className="section-heading compact">
                           <div>
                             <h2>
-                              {page === "Storyboard" ? "Your storyboard" : page}
+                              {page === "Storyboard" ? "Your scenes" : PAGE_NAMES[page]}
                             </h2>
                             <p>
                               {page === "Storyboard"
@@ -1115,7 +1065,7 @@ function Studio() {
                                   <div className="scene-card-body">
                                     <div className="scene-title-row">
                                       <h3>{s.title}</h3>
-                                      <MoreHorizontal size={17} />
+                                      <ChevronRight size={17} />
                                     </div>
                                     <p>
                                       {s.body.summary ||
@@ -1153,7 +1103,7 @@ function Studio() {
                                                 ? short(job.status)
                                                 : "Not started"}
                                       </Badge>
-                                      <span>{s.assets.length} takes</span>
+                                      <span>{s.assets.filter(a=>a.kind==="image").length} photos · {s.assets.filter(a=>a.kind==="video").length} clips</span>
                                     </div>
                                   </div>
                                 </button>
@@ -1255,11 +1205,7 @@ function Studio() {
         />
       )}
       {newOpen && (
-        <ProjectDialog
-          close={() => setNewOpen(false)}
-          create={newProject}
-          busy={busy}
-        />
+        <NewVideoWizard close={()=>setNewOpen(false)} create={v=>newProject(v.title,v.brief,false,v)} busy={busy} models={data?.services.ollama.models||[]}/>
       )}
       {searchOpen && (
         <div className="modal-backdrop" onClick={() => setSearchOpen(false)}>
@@ -1297,8 +1243,8 @@ function Studio() {
                   <ArrowRight size={14} />
                 </button>
               ))}
-            {NAV.filter((n) =>
-              n[0].toLowerCase().includes(search.toLowerCase()),
+            {SEARCH_NAV.filter((n) =>
+              (PAGE_NAMES[n[0]]||n[0]).toLowerCase().includes(search.toLowerCase()),
             ).map(([name, Icon]) => (
               <button
                 key={name}
@@ -1308,7 +1254,7 @@ function Studio() {
                 }}
               >
                 <Icon size={17} />
-                {name}
+                {PAGE_NAMES[name]||name}
                 <ArrowRight size={14} />
               </button>
             ))}
@@ -1939,6 +1885,10 @@ function SceneInspector({
   );
 }
 
+function ActivityView({projects,jobs,act,active,choose}:{projects:Project[];jobs:Job[];act:any;active:string;choose:(id:string)=>void}){
+  const [scope,setScope]=useState('all');const selected=projects.find(p=>p.id===scope);
+  return <><label className="activity-scope">Show activity for<select value={scope} onChange={e=>setScope(e.target.value)}><option value="all">All my videos</option>{projects.map(p=><option value={p.id} key={p.id}>{p.title}</option>)}</select></label>{selected&&<button className="button" onClick={()=>choose(selected.id)}>Open {selected.title}</button>}<QueuePage jobs={scope==='all'?jobs:jobs.filter(j=>j.project_id===scope)} act={act} project={selected||projects.find(p=>p.id===active)||projects[0]}/></>
+}
 function QueuePage({
   jobs,
   project,
@@ -1953,21 +1903,10 @@ function QueuePage({
     <section className="panel">
       <div className="section-heading">
         <div>
-          <h2>The production floor</h2>
-          <p>One GPU workload at a time. Every frame in the right hands.</p>
+          <h2>Activity</h2>
+          <p>See what is working, waiting, or ready for review.</p>
         </div>
-        <Button
-          onClick={() =>
-            act(
-              () => request(`/api/projects/${project.id}/resume`, {}),
-              "Production resumed.",
-            )
-          }
-          disabled={featurePhase < 2}
-        >
-          <Play size={15} />
-          Resume
-        </Button>
+
       </div>
       {jobs.length ? (
         jobs.map((j) => (
@@ -2558,11 +2497,13 @@ function SettingsPage({
   act,
   onPair,
   project,
+  go,
 }: {
   data?: Bootstrap;
   act: any;
   onPair: () => void;
   project?: Project;
+  go:(p:string)=>void;
 }) {
   const [comfy, setComfy] = useState(
     data?.settings.comfy_url || "http://127.0.0.1:8188",
@@ -2575,7 +2516,8 @@ function SettingsPage({
   return (
     <section className="settings-page">
       <span className="eyebrow">MAKE YOURSELF AT HOME</span>
-      <h1>Studio settings</h1>
+      <h1>Settings</h1>
+      <button className="button" onClick={()=>go("Model Library")}>Advanced creation tools</button>
       <p>Your connections, your tools, your creative space.</p>
       <div className="panel settings-panel">
         <h3>

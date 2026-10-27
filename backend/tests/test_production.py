@@ -40,6 +40,19 @@ def test_twenty_scene_jobs_have_distinct_frozen_prompts(engine):
         assert job['snapshot']['scene_revision_id']==expected['revision_id']
 
 
+def test_guided_stage_requests_are_atomic_scoped_and_keep_pause(engine):
+    store,m,p,scenes=engine
+    m['production'].pause(p['id'],True)
+    with pytest.raises(ValueError,match='owned by this project'):
+        m['production'].produce(p['id'],'missing_stills',scene_ids=[scenes[0]['id'],'foreign'])
+    assert not store.jobs(p['id'])
+    result=m['production'].produce(p['id'],'missing_stills',scene_ids=[scenes[0]['id']])
+    assert result['planned']==1 and m['production'].state(p['id'])['paused']==1
+    job=store.jobs(p['id'])[0]
+    assert job['scene_id']==scenes[0]['id'] and job['snapshot']['manual_override'] and not job['snapshot']['automatic']
+    assert m['production'].produce(p['id'],'missing_videos',scene_ids=[scenes[1]['id']])['planned']==0
+
+
 def test_elapsed_budget_pauses_before_new_jobs_and_resume_starts_new_window(engine):
     store,m,p,scenes=engine
     store.update_project(p['id'],1,{'mode':'automatic','settings':{'run_budget_minutes':1}})

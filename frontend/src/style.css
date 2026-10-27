@@ -2399,3 +2399,50 @@ input,textarea,select { font-size:16px; }
 .draft-notice .button { font-size:13px; }
 .production-controls .button-row { flex-wrap:wrap; }
 @media(max-width:780px){.project-status{align-items:stretch;flex-direction:column}.production-controls .button,.mode-switch button{font-size:14px}.project-grid{grid-template-columns:1fr}}
+
+/* Task-based project navigation; advanced controls stay available on demand. */
+.sidebar-create { width:100%; margin:20px 0 16px; }
+.sidebar .nav-label { margin-top:16px; }
+.sidebar { scrollbar-width:thin; }
+.project-steps { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px; margin:20px 0; }
+.project-steps button { display:flex; align-items:center; justify-content:center; gap:9px; border:1px solid #414351; background:#1a1c24; color:#c6cad8; border-radius:8px; padding:12px 8px; font-size:14px; min-height:52px; }
+.project-steps button span { width:24px; height:24px; display:grid; place-items:center; border-radius:50%; background:#303440; }
+.project-steps button.current { border-color:#c1a1ff; color:#f0e7ff; background:#302740; }
+.next-step { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:16px 0; border-bottom:1px solid #343746; margin-bottom:18px; }
+.next-step>div:first-child { flex:1; min-width:220px; }
+.next-step p { font-size:14px; color:#b8bdcb; margin-top:5px; }
+.expert-actions { flex-basis:100%; display:flex; flex-wrap:wrap; gap:12px; padding-top:12px; }
+.expert-actions p { width:100%; }
+.project-advanced { margin:14px 0 22px; }
+.project-advanced>summary { color:#b7bdce; padding:10px 0; }
+.project-brief-summary { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.story-guide { display:flex; align-items:center; gap:20px; margin:16px 0 24px; }
+.story-guide>div { flex:1; }
+.story-guide h2 { margin-bottom:10px; }
+.story-guide p { font-size:15px; }
+.activity-scope { display:block; max-width:420px; margin-bottom:20px; }
+.activity-scope select { width:100%; margin-top:8px; }
+.new-video-wizard { max-height:calc(100vh - 40px); overflow:auto; width:680px; }
+.new-video-wizard form>label { display:block; margin:15px 0; }
+.new-video-wizard input:not([type=checkbox]),.new-video-wizard select,.new-video-wizard textarea { width:100%; }
+.new-video-wizard form>.button { width:100%; margin-top:18px; }
+.new-video-wizard details { margin:16px 0; }
+.new-video-wizard .draft-notice { font-size:13px; }
+.new-video-wizard .draft-notice .button { min-height:32px; }
+.help-page { max-width:900px; }
+.help-page>p { margin:12px 0 24px; }
+.help-page li { padding:10px 0; }
+.help-page details { border-top:1px solid #343746; padding:18px 0; }
+.help-page summary { font-size:17px; }
+.help-page details p { margin-top:12px; }
+.hero { height:260px; }
+.hero h1 { font-size:30px; }
+.hero-copy { padding-left:30px; }
+.hero p { font-size:14px; }
+@media(max-width:1000px){.project-steps{grid-template-columns:repeat(3,minmax(0,1fr))}.story-guide{align-items:flex-start;flex-direction:column}.production-heading{flex-direction:column}.production-heading .mode-switch{margin-top:8px}.hero-art{display:none}.hero-copy{width:100%}}
+@media(max-width:600px){.project-steps{grid-template-columns:repeat(2,minmax(0,1fr))}.project-steps button{justify-content:flex-start}.new-video-wizard{padding:24px}.hero h1{font-size:26px}.hero-actions{flex-wrap:wrap}.project-status{padding:16px}.new-video-wizard .settings-grid{grid-template-columns:1fr}}
+.sr-only { position:absolute!important; width:1px!important; height:1px!important; padding:0!important; margin:-1px!important; overflow:hidden!important; clip:rect(0,0,0,0)!important; white-space:nowrap!important; border:0!important; }
+.new-video-wizard label,.production-settings label,.visual-bible label,.timeline-editor label { font-size:14px; }
+.new-video-wizard input[type=checkbox],.check-label input[type=checkbox] { width:20px; height:20px; min-width:20px; margin:0; }
+.new-video-wizard form>label.check-label,.check-label { display:flex; align-items:center; gap:10px; }
+.new-video-wizard>p { font-size:15px; }

@@ -26,9 +26,9 @@ export function useRecoverableDraft<T>(key:string, server:T, revision:number, va
   return {value:record.value,setValue,revision:record.revision,dirty,conflict,storageError,adopt,discard:()=>adopt(server,revision)};
 }
 
-export function DraftNotice({draft}:{draft:{dirty:boolean;conflict:boolean;storageError:string;discard:()=>void}}){
+export function DraftNotice({draft,savedLabel='All changes saved to your local studio.'}:{draft:{dirty:boolean;conflict:boolean;storageError:string;discard:()=>void};savedLabel?:string}){
   return <div className={'draft-notice'+(draft.conflict||draft.storageError?' draft-warning':'')}>
-    <p role={draft.conflict||draft.storageError?'alert':'status'}>{draft.storageError|| (draft.conflict?'A newer saved version exists. Your draft is protected here. Review it before replacing or discarding anything.':draft.dirty?'Draft protected in this browser · save to apply your changes.':'All changes saved to your local studio.')}</p>
+    <p role={draft.conflict||draft.storageError?'alert':'status'}>{draft.storageError|| (draft.conflict?'A newer saved version exists. Your draft is protected here. Review it before replacing or discarding anything.':draft.dirty?'Draft protected in this browser · save to apply your changes.':savedLabel)}</p>
     {draft.dirty&&<button className="button" onClick={draft.discard}>Discard draft and use saved version</button>}
   </div>
 }
