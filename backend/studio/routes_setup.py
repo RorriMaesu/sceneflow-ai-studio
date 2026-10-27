@@ -32,9 +32,10 @@ class Install(Strict):
 
 @router.get('')
 async def readiness(session=Depends(require_session)):
+    from .resource_broker import status as memory_status
     folders = storage.status()
     local = await services(True)
-    return {'version': VERSION, 'storage': folders, 'resources': resources(), 'services': local,
+    return {'version': VERSION, 'storage': folders, 'resources': resources(), 'services': local, 'memory_manager': memory_status(),
             'packs': model_library.list_packs(), 'downloads': model_library.downloads(),
             'setup_complete': bool(settings.get('setup_complete')),
             'can_use_existing_tools': local['comfy']['connected'],

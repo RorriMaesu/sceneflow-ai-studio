@@ -296,6 +296,8 @@ class Dispatcher:
 
     async def start(self):
         migrate()
+        from .provider_workers import recovery
+        await asyncio.to_thread(recovery)
         from .director import migrate as migrate_director
         migrate_director()
         db.execute("UPDATE director_commands SET status='needs_attention',error='Agent restarted during a reviewed command. Inspect queued work before requesting it again.' WHERE status='running'")
@@ -325,19 +327,33 @@ class Dispatcher:
                 await self.task
             except asyncio.CancelledError:
                 pass
+        from .resource_broker import broker
+        await broker.release(stopping=True)
 
     async def loop(self):
+        from .resource_broker import broker
         while not self.stopping:
             try:
                 from .director import run_commands
                 await run_commands()
                 active = db.one("SELECT * FROM jobs WHERE status IN ('submitted','reconciling','running') ORDER BY created LIMIT 1")
                 if active:
-                    await self.reconcile(active)
+                    reason=await broker.acquire(active,recovering=True)
+                    if reason:
+                        if active.get('error')!=reason:db.execute('UPDATE jobs SET error=? WHERE id=?',(reason,active['id']))
+                    else:
+                        await self.reconcile(active)
+                    await broker.release_if_terminal()
                 else:
+                    await broker.release_if_terminal()
                     job = self.next_job()
                     if job:
-                        await self.execute(job)
+                        reason=await broker.acquire(job)
+                        if reason:
+                            if job.get('error')!=reason:update_job(job['id'],'queued',error=reason)
+                        else:
+                            await self.execute(job)
+                        await broker.release_if_terminal()
                         updated=db.one('SELECT status,error FROM jobs WHERE id=?',(job['id'],))
                         if updated and updated['status']=='queued' and updated['error']:
                             self.deferred[job['id']]=time.monotonic()+10

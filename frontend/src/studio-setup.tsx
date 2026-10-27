@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { request } from "./api";
 import "./setup.css";
@@ -14,6 +14,7 @@ export function StudioSetup({ act, done }: { act: any; done?: () => void }) {
   const [updates, setUpdates] = useState<any[]>();
   const [selectedRoot, setSelectedRoot] = useState("");
   const data = query.data;
+  useEffect(() => { if (quote) { const review = document.getElementById("download-review"); review?.scrollIntoView({ block: "start" }); review?.focus({ preventScroll: true }); } }, [quote]);
   async function run(action: () => Promise<any>, message = "Setup updated.") {
     if (busy) return;
     setBusy(true);
@@ -63,10 +64,11 @@ export function StudioSetup({ act, done }: { act: any; done?: () => void }) {
       <h3>2. Check your existing tools</h3>
       <p>Pictures & motion: <strong>{data.services.comfy.connected ? "Connected" : "Start the local video service"}</strong></p>
       <p>Story helper: <strong>{data.services.ollama.connected ? "Connected" : "Start the local story helper"}</strong></p>
-      <p>New tools are marked Ready only after a sample succeeds on this computer. Graphics-heavy tasks will share the same work queue.</p>
+      <p>New tools are marked Ready only after a sample succeeds on this computer. {data.memory_manager?.policy || "Graphics-heavy tasks share one work queue"}.</p>
+      {data.memory_manager?.active && <p role="status">A creation task is using the graphics card. Other requests will wait for a safe turn.</p>}
     </section>
-    <section className="panel settings-panel">
-      <h3>3. Add tools when you need them</h3>
+    <details className="panel settings-panel">
+      <summary>3. Add voices, music and other tools (optional)</summary>
       <p>You can finish setup using your existing tools. Speech, music and other additions are optional.</p>
       <div className="setup-tools">
         {data.packs.map((p: any) => <article className="setup-tool" key={p.id}>
@@ -79,8 +81,8 @@ export function StudioSetup({ act, done }: { act: any; done?: () => void }) {
         </article>)}
       </div>
       {!hasFolders && <p>Choose your folders above before reviewing a download.</p>}
-    </section>
-    {quote && <section className="panel settings-panel" aria-label="Review download">
+    </details>
+    {quote && <section className="panel settings-panel" id="download-review" tabIndex={-1} aria-label="Review download">
       <h3>Review this download</h3>
       <p><strong>{size(quote.download_bytes)}</strong> to download · {size(quote.pack_bytes)} installed files</p>
       <p>Save to: {quote.destination}</p><p>License: {quote.license}. <a href={quote.source} target="_blank" rel="noreferrer">Read the official model terms</a></p>
@@ -100,6 +102,6 @@ export function StudioSetup({ act, done }: { act: any; done?: () => void }) {
       <button className="button" disabled={busy} onClick={() => run(async () => setUpdates(await request("/api/setup/updates/check", {})), "Update check complete. Your tools were not changed.")}>Check for updates</button>
       {updates && updates.map((u: any) => <p key={u.pack_id}>{data.packs.find((p: any) => p.id === u.pack_id)?.name}: {u.error || (u.update_available ? "New version found — compatibility testing required before use." : "Catalog version is current.")}</p>)}
     </details>
-    <button className="button primary" disabled={busy || !hasFolders} onClick={() => run(async () => { const result = await request("/api/setup/finish", {}); done?.(); return result; }, "Setup finished. Your existing creation tools are available.")}>{data.setup_complete ? "Save setup choices" : "Finish setup with existing tools"}</button>
+    <button className="button primary" disabled={busy || !hasFolders} onClick={() => run(async () => { const result = await request("/api/setup/finish", {}); done?.(); return result; }, "Setup saved. You can add or repair creation tools whenever you need them.")}>{data.setup_complete ? "Save setup choices" : "Finish setup with existing tools"}</button>
   </section>;
 }
