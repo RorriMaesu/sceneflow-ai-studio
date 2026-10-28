@@ -304,19 +304,13 @@ class Dispatcher:
         from .director import migrate as migrate_director
         migrate_director()
         db.execute("UPDATE director_commands SET status='needs_attention',error='Agent restarted during a reviewed command. Inspect queued work before requesting it again.' WHERE status='running'")
-        db.execute("UPDATE jobs SET status='needs_attention',error='Agent restarted during a local AI request. Review any saved proposal before explicitly retrying.' WHERE status='running' AND kind IN ('plan','director','qa','outline')")
-        for job in db.all("SELECT id FROM jobs WHERE status='running' AND kind='export'"):
+        db.execute("UPDATE jobs SET status='needs_attention',error='Agent restarted during a local AI request. Review any saved proposal before explicitly retrying.' WHERE status='running' AND kind IN ('plan','director','qa','outline','script')")
+        for job in db.all("SELECT id FROM jobs WHERE status='running' AND kind IN ('export','master_export')"):
             from .storage import export_folder
-            marker=export_folder(job['id'])/'worker.json'
             try:
-                if marker.exists():
-                    owner=json.loads(marker.read_text(encoding='utf-8'));process=psutil.Process(owner['pid'])
-                    if abs(process.create_time()-owner['created'])<.01 and str(process.exe()).casefold()==owner['binary'].casefold() and any('export-'+job['id'] in part for part in process.cmdline()):
-                        process.kill();process.wait(timeout=5)
-                    marker.unlink(missing_ok=True)
-                update_job(job['id'],'queued',error='Restarting the frozen export after agent recovery.')
-            except psutil.NoSuchProcess:
-                update_job(job['id'],'queued',error='Restarting the frozen export after agent recovery.')
+                from .media import stop_export_worker
+                stop_export_worker(job['id'],db)
+                update_job(job['id'],'queued',error='Resuming this frozen export; verified completed sections will be reused.')
             except Exception:
                 update_job(job['id'],'needs_attention',error='Could not verify that the previous owned export worker stopped. Review before retrying.')
         db.execute("UPDATE jobs SET status='reconciling',error='Agent restarted; checking the original backend submission.' WHERE status IN ('running','submitted') AND kind IN ('image','video')")
@@ -374,11 +368,11 @@ class Dispatcher:
             control = state(job['project_id'])
             snap = json.loads(job['snapshot'])
             run=db.one('SELECT * FROM production_runs WHERE project_id=?',(project['id'],))
-            explicit=not snap.get('automatic') and (job['kind'] in ['export','qa'] or snap.get('manual_override')) and snap.get('manual_requested_at',job['created'])>(run['paused_at'] if run else 0)
+            explicit=not snap.get('automatic') and (job['kind'] in ['export','master_export','qa'] or snap.get('manual_override')) and snap.get('manual_requested_at',job['created'])>(run['paused_at'] if run else 0)
             if job['scene_id'] and db.scene(job['scene_id'])['body'].get('disabled'):
                 continue
             setup_probe = snap.get('setup_probe') and json.loads(project['settings']).get('setup_samples') and job['kind'] in {'speech','music','effects'}
-            outline_root = job['kind']=='outline' and json.loads(project['settings']).get('production_root')
+            outline_root = job['kind'] in {'outline','master_export'} and json.loads(project['settings']).get('production_root')
             if (control['paused'] and not explicit) or (project['archived'] and not setup_probe and not outline_root) or (project['mode']=='manual' and snap.get('automatic')):
                 continue
             config=json.loads(project['settings'])
@@ -711,6 +705,9 @@ class Dispatcher:
         if job['kind'] in {'transcribe','align'}:
             from .caption_engine import execute
             await execute(job,snapshot)
+        elif job['kind']=='script':
+            from .script_planning import execute
+            await execute(job,snapshot)
         elif job['kind']=='outline':
             from .productions import execute_outline
             await execute_outline(job,snapshot)
@@ -726,10 +723,13 @@ class Dispatcher:
                 await execute(job,snapshot)
             except httpx.HTTPError as error:
                 raise ValueError('The local vision service is unavailable. This asset is preserved for manual review.') from error
-        elif job['kind']=='export':
+        elif job['kind'] in {'export','master_export'}:
             from .exports import execute_export
             update_job(job['id'],'running',started=now())
-            await asyncio.to_thread(execute_export,job,snapshot)
+            from .media import MediaCancelled
+            try:await asyncio.to_thread(execute_export,job,snapshot)
+            except MediaCancelled:
+                update_job(job['id'],'cancelled',finished=now(),error='Stopped this export. Verified sections are kept for retry.');return
             update_job(job['id'],'completed',progress=1,finished=now())
         else:
             raise ValueError('This job type is not enabled in the current build.')

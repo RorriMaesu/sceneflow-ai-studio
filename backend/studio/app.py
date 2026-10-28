@@ -345,3 +345,9 @@ async def frontend(path: str):
     if (root / 'index.html').exists():
         return FileResponse(root / 'index.html')
     return JSONResponse({'detail': 'The frontend has not been built. Run the setup script.'}, status_code=503)
+
+from .master_export import router as master_router
+app.include_router(master_router)
+
+from .script_planning import router as script_router
+app.include_router(script_router)

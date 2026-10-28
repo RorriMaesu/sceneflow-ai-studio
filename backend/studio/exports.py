@@ -48,8 +48,8 @@ def save_timeline(project_id,revision,clips,audio,settings,automatic=False):
             raise ValueError('Invalid clip transition or volume.')
         if clip.get('audio_asset_id') and not db.one("SELECT id FROM assets WHERE id=? AND project_id=? AND scene_id=? AND kind='audio' AND job_id=?",(clip['audio_asset_id'],project_id,clip['scene_id'],asset['job_id'])):
             raise ValueError('A generated audio sidecar must share the clip’s exact scene and job.')
-    if len(audio)>20:
-        raise ValueError('Use at most twenty imported audio tracks.')
+    if len(audio)>200:
+        raise ValueError('Use at most 200 audio tracks per sequence. Split longer scripts into more sequences.')
     for track in audio:
         asset=db.one('SELECT * FROM assets WHERE id=? AND project_id=? AND kind=?',(track.get('asset_id'),project_id,'audio'))
         if not asset:

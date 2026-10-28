@@ -45,6 +45,15 @@ def filter_file_option(binary):
 
 
 def execute(job,snapshot):
+    from .media import export_owner
+    from .storage import export_folder
+    folder=export_folder(job['id']);folder.mkdir(parents=True,exist_ok=True)
+    token=export_owner.set({'job_id':job['id'],'store':db,'folder':folder})
+    try:return render(job,snapshot)
+    finally:export_owner.reset(token)
+
+
+def render(job,snapshot):
     if db.one("SELECT id FROM assets WHERE job_id=? AND kind='export'",(job['id'],)):
         return
     timeline=snapshot['timeline'];settings=timeline['settings'];clips=timeline['clips']
@@ -58,17 +67,30 @@ def execute(job,snapshot):
     root=export_folder(job['id']);root.mkdir(parents=True,exist_ok=True)
     if shutil.disk_usage(root).free<reserve:
         raise ValueError('Not enough free project-drive space for export intermediates and the storage reserve.')
-    normalized=[];has_audio=False
+    from .render_cache import RenderCache
+    cache=RenderCache(job,db,{'width':width,'height':height,'fps':fps,'codec':settings.get('codec','h264'),'crf':settings.get('crf',18),'fit':settings.get('fit','pad')})
+    normalized=[];has_audio=False;verified={}
+    def source_for(item):
+        key=(item['asset_id'],item['source_sha256'])
+        if key not in verified:verified[key]=verified_source(item)
+        return verified[key]
+    def intermediate_options():
+        options=encode_options(settings)
+        at=options.index('-c:a');options[at+1]='alac'
+        return options+['-video_track_timescale',str(fps*1000)]
+    def progress(value):
+        db.execute('UPDATE jobs SET progress=? WHERE id=?',(value,job['id']))
+
     # Normalize trim/speed/audio together; each clip has exactly one stereo track.
     for index,(clip,duration) in enumerate(zip(clips,durations)):
-        source=verified_source(clip);asset=db.one('SELECT kind,metadata FROM assets WHERE id=?',(clip['asset_id'],));metadata=json.loads(asset['metadata'])
+        source=source_for(clip);asset=db.one('SELECT kind,metadata FROM assets WHERE id=?',(clip['asset_id'],));metadata=json.loads(asset['metadata'])
         start=float(clip.get('trim_in',0));span=float(clip['trim_out'])-start;speed=float(clip.get('speed',1))
         args=['-protocol_whitelist','file,pipe','-ss',str(start),'-t',str(span)]
         if asset['kind']=='image':args=['-loop','1','-t',str(span)]
         args+=['-i',str(source)]
         sidecar=clip.get('audio_asset_id') and not metadata.get('audio_streams') and not clip.get('mute') and settings.get('audio_mode','silent')!='silent'
         if sidecar:
-            audio_path=verified_source({'asset_id':clip['audio_asset_id'],'source_sha256':clip['audio_source_sha256']})
+            audio_path=source_for({'asset_id':clip['audio_asset_id'],'source_sha256':clip['audio_source_sha256']})
             args+=['-protocol_whitelist','file,pipe','-ss',str(start),'-t',str(span),'-i',str(audio_path)]
         if (not metadata.get('audio_streams') and not sidecar) or clip.get('mute') or settings.get('audio_mode','silent')=='silent':
             args+=['-f','lavfi','-t',str(duration),'-i','anullsrc=r=48000:cl=stereo'];audio='1:a:0';audio_filter='asetpts=PTS-STARTPTS'
@@ -77,31 +99,44 @@ def execute(job,snapshot):
         fit='increase' if settings.get('fit')=='crop' else 'decrease'
         sizing=f'scale={width}:{height}:force_original_aspect_ratio={fit},'+(f'crop={width}:{height}' if fit=='increase' else f'pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black')
         video=f'setpts=(PTS-STARTPTS)/{speed},{sizing},setsar=1,fps={fps},format=yuv420p'
-        output=root/f'{index:04d}.mp4'
-        ffmpeg(args+['-filter_complex',f'[0:v]{video}[v];[{audio}]{audio_filter},aresample=48000,apad[a]','-map','[v]','-map','[a]','-t',str(duration),*encode_options(settings),str(output)])
-        normalized.append(output)
-    args=[];filters=[]
-    for index,path in enumerate(normalized):
-        args+=['-i',str(path)]
-        filters += [f'[{index}:v]settb=AVTB,setpts=PTS-STARTPTS[v{index}]',f'[{index}:a]asetpts=PTS-STARTPTS[a{index}]']
-    video='v0';audio='a0';elapsed=durations[0]
-    for index in range(1,len(clips)):
-        transition=clips[index-1].get('transition','inherit')
-        if transition=='inherit':transition=settings.get('transition','cut')
-        next_video=f'jv{index}';next_audio=f'ja{index}'
-        if transition=='cut':
-            filters.append(f'[{video}][{audio}][v{index}][a{index}]concat=n=2:v=1:a=1[{next_video}][{next_audio}]')
-            elapsed+=durations[index]
-        else:
-            length=min(float(settings.get('transition_duration',.35)),durations[index-1]/3,durations[index]/3)
-            length=max(1/fps,round(length*fps)/fps)
-            effect='fadeblack' if transition=='fade_black' else 'dissolve' if transition=='dissolve' else 'fade'
-            filters.append(f'[{video}][v{index}]xfade=transition={effect}:duration={length}:offset={elapsed-length}[{next_video}]')
-            filters.append(f'[{audio}][a{index}]acrossfade=d={length}:c1=tri:c2=tri[{next_audio}]')
-            elapsed+=durations[index]-length
-        video=next_video;audio=next_audio
-    movie=root/'joined.mp4';script=root/'assembly.filters';script.write_text(';'.join(filters),encoding='utf-8')
-    ffmpeg(args+[filter_file_option(executable('ffmpeg')),str(script),'-map',f'[{video}]','-map',f'[{audio}]','-t',str(elapsed),*encode_options(settings),str(movie)])
+        frames=round(duration*fps)
+        # Lossless audio in intermediates avoids AAC encoder delay at every edit.
+        graph=f'[0:v]{video},tpad=stop_mode=clone:stop_duration=1[v];[{audio}]{audio_filter},aresample=48000,apad,atrim=end_sample={round(duration*48000)}[a]'
+        recipe={'stage':'normalize','source':clip['source_sha256'],'kind':asset['kind'],'start':start,'span':span,'speed':speed,'graph':graph,'sidecar':clip.get('audio_source_sha256')}
+        node=cache.section(recipe,frames,lambda output:ffmpeg(args+['-filter_complex',graph,'-map','[v]','-map','[a]','-t',str(duration),'-frames:v',str(frames),*intermediate_options(),str(output)]),inputs=2)
+        normalized.append({**node,'first':index,'last':index})
+        progress(.05+.45*(index+1)/len(clips))
+    def boundary(index):
+        choice=clips[index].get('transition','inherit')
+        return settings.get('transition','cut') if choice=='inherit' else choice
+    def combine(nodes,transition='cut'):
+        frames=sum(n['frames'] for n in nodes)
+        fade_frames=0
+        if transition!='cut':
+            boundary_index=nodes[0]['last']
+            fade_frames=max(1,round(min(float(settings.get('transition_duration',.35)),durations[boundary_index]/3,durations[boundary_index+1]/3)*fps))
+            frames-=fade_frames
+        def build(output):
+            if transition=='cut':
+                # Relative cache names contain only hex digits; durations are explicit.
+                listing=root/('concat-'+nodes[0]['key'][:12]+'-'+nodes[-1]['key'][:12]+'.txt')
+                listing.write_text(''.join("file '"+str(n['path']).replace('\\','/').replace("'", "'\\''")+"'\nduration "+str(n['frames']/fps)+"\n" for n in nodes),encoding='utf-8')
+                ffmpeg(['-f','concat','-safe','0','-i',str(listing),'-map','0:v:0','-map','0:a:0','-c:v','copy','-af',f'aresample=48000:async=1:first_pts=0,apad,atrim=end_sample={round(frames/fps*48000)}','-c:a','alac','-ar','48000','-ac','2','-t',str(frames/fps),'-video_track_timescale',str(fps*1000),str(output)],timeout=7200)
+            else:
+                length=fade_frames/fps;effect='fadeblack' if transition=='fade_black' else 'dissolve' if transition=='dissolve' else 'fade'
+                graph=f'[0:v]settb=AVTB,setpts=PTS-STARTPTS[l];[1:v]settb=AVTB,setpts=PTS-STARTPTS[r];[l][r]xfade=transition={effect}:duration={length}:offset={nodes[0]["frames"]/fps-length},fps={fps},tpad=stop_mode=clone:stop_duration=1[v];[0:a][1:a]acrossfade=d={length}:c1=tri:c2=tri,apad,atrim=end_sample={round(frames/fps*48000)}[a]'
+                ffmpeg(['-i',str(nodes[0]['path']),'-i',str(nodes[1]['path']),'-filter_complex',graph,'-map','[v]','-map','[a]','-frames:v',str(frames),'-t',str(frames/fps),*intermediate_options(),str(output)],timeout=7200)
+        result=cache.section({'stage':'join','nodes':[n['key'] for n in nodes],'transition':transition,'fade_frames':fade_frames},frames,build,inputs=len(nodes))
+        return {**result,'first':nodes[0]['first'],'last':nodes[-1]['last']}
+    nodes=normalized
+    cuts=all(boundary(i)=='cut' for i in range(len(clips)-1))
+    while len(nodes)>1:
+        next_level=[];size=8 if cuts else 2
+        for offset in range(0,len(nodes),size):
+            group=nodes[offset:offset+size]
+            next_level.append(group[0] if len(group)==1 else combine(group,'cut' if cuts else boundary(group[0]['last'])))
+        nodes=next_level;progress(.6)
+    movie=nodes[0]['path'];elapsed=nodes[0]['frames']/fps
     expected=elapsed
     loop=settings.get('loop','none')
     if loop in ['fade_black','crossfade']:
@@ -120,28 +155,42 @@ def execute(job,snapshot):
     # Imported audio is mixed once after video assembly, so muxed clip audio is never doubled.
     tracks=timeline.get('audio',[]) if settings.get('audio_mode')=='mixed' else []
     if tracks:
-        args=['-i',str(movie)];filters=['[0:a]anull[base]'];labels=['[base]']
         voice_intervals=[]
         for t in tracks:
             if t.get('role')=='voiceover' and not t.get('mute'):
                 span=float(t['trim_out'])-float(t.get('trim_in',0));voice_intervals.append((float(t.get('start',0)),float(t.get('start',0))+span))
-        for index,track in enumerate(tracks,1):
-            source=verified_source(track);start=float(track.get('start',0));span=float(track['trim_out'])-float(track.get('trim_in',0))
-            args+=['-protocol_whitelist','file,pipe','-i',str(source)]
-            volume=0 if track.get('mute') else float(track.get('volume',1))
-            chain=f"[{index}:a]atrim=start={float(track.get('trim_in',0))}:end={float(track['trim_out'])},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo,volume={volume}"
-            fade_in=min(float(track.get('fade_in',0)),span);fade_out=min(float(track.get('fade_out',0)),span)
-            if fade_in:chain+=f',afade=t=in:d={fade_in}'
-            if fade_out:chain+=f',afade=t=out:st={span-fade_out}:d={fade_out}'
-            chain+=f',adelay={round(start*1000)}:all=1'
-            if track.get('duck') and track.get('role')=='music' and voice_intervals:
-                condition='+'.join(f'between(t\\,{a}\\,{b})' for a,b in voice_intervals)
-                chain+=f",volume='if({condition}\\,0.3\\,1)':eval=frame"
-            label=f't{index}';filters.append(chain+f'[{label}]');labels.append(f'[{label}]')
-            has_audio=has_audio or not track.get('mute')
-        filters.append(''.join(labels)+f'amix=inputs={len(labels)}:duration=first:normalize=0,alimiter=limit=0.95[mix]')
-        output=root/'mixed.mp4';script=root/'audio.filters';script.write_text(';'.join(filters),encoding='utf-8')
-        ffmpeg(args+[filter_file_option(executable('ffmpeg')),str(script),'-map','0:v:0','-map','[mix]','-t',str(expected),'-c:v','copy','-c:a','aac','-ar','48000','-ac','2','-movflags','+faststart',str(output)]);movie=output
+        current_mix=movie
+        # At most seven new tracks plus the previous sum are opened together.
+        for offset in range(0,len(tracks),7):
+            batch=tracks[offset:offset+7];args=['-i',str(current_mix)];filters=['[0:a]anull[base]'];labels=['[base]']
+            for index,track in enumerate(batch,1):
+                source=source_for(track);start=float(track.get('start',0));span=float(track['trim_out'])-float(track.get('trim_in',0))
+                args+=['-protocol_whitelist','file,pipe','-i',str(source)]
+                volume=0 if track.get('mute') else float(track.get('volume',1))
+                chain=f"[{index}:a]atrim=start={float(track.get('trim_in',0))}:end={float(track['trim_out'])},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo,volume={volume}"
+                fade_in=min(float(track.get('fade_in',0)),span);fade_out=min(float(track.get('fade_out',0)),span)
+                if fade_in:chain+=f',afade=t=in:d={fade_in}'
+                if fade_out:chain+=f',afade=t=out:st={span-fade_out}:d={fade_out}'
+                chain+=f',adelay={round(start*1000)}:all=1'
+                if track.get('duck') and track.get('role')=='music' and voice_intervals:
+                    condition='+'.join(f'between(t\\,{a}\\,{b})' for a,b in voice_intervals)
+                    chain+=f",volume='if({condition}\\,0.3\\,1)':eval=frame"
+                label=f't{index}';filters.append(chain+f'[{label}]');labels.append(f'[{label}]')
+                has_audio=has_audio or not track.get('mute')
+            final=offset+len(batch)==len(tracks)
+            tail=',alimiter=limit=0.95' if final else ''
+            filters.append(''.join(labels)+f'amix=inputs={len(labels)}:duration=first:normalize=0'+tail+'[mix]')
+            output=root/f'mix-{offset:04d}.wav';script=root/'audio.filters';script.write_text(';'.join(filters),encoding='utf-8')
+            ffmpeg(args+[filter_file_option(executable('ffmpeg')),str(script),'-map','[mix]','-t',str(expected),'-c:a','pcm_f32le','-ar','48000','-ac','2',str(output)],timeout=7200)
+            if current_mix!=movie:current_mix.unlink(missing_ok=True)
+            current_mix=output
+        output=root/'mixed.mp4'
+        ffmpeg(['-i',str(movie),'-i',str(current_mix),'-map','0:v:0','-map','1:a:0','-t',str(expected),'-c:v','copy','-c:a','aac','-ar','48000','-ac','2','-movflags','+faststart',str(output)],timeout=7200);movie=output
+        current_mix.unlink(missing_ok=True)
+    # Convert lossless intermediate audio exactly once for delivery.
+    if not tracks:
+        output=root/'delivery.mp4';ffmpeg(['-i',str(movie),'-map','0:v:0','-map','0:a:0','-c:v','copy','-c:a','aac','-ar','48000','-ac','2','-movflags','+faststart',str(output)],timeout=7200);movie=output
+    progress(.9)
     silent=settings.get('audio_mode','silent')=='silent' or not has_audio
     if silent:
         output=root/'silent.mp4';ffmpeg(['-i',str(movie),'-map','0:v:0','-an','-c:v','copy','-movflags','+faststart',str(output)]);movie=output
@@ -154,8 +203,9 @@ def execute(job,snapshot):
         ffmpeg(['-i',str(movie),'-f','srt','-i',str(subtitle),'-map','0:v:0','-map','0:a?','-map','1:0','-c:v','copy','-c:a','copy','-c:s','mov_text','-metadata:s:s:0','language=und','-movflags','+faststart',str(output)])
         movie=output
     validation=probe(movie)
+    if validation.get('av_duration_difference',0)>max(.05,1/fps):raise ValueError('The finished audio and video lengths differ. Completed sections are kept; inspect the source timing before retrying.')
     if validation.get('subtitle_streams',0)!=(1 if subtitle_items else 0):raise ValueError('The finished video did not contain the expected caption track.')
     if validation['width']!=width or validation['height']!=height or abs(validation['fps']-fps)>.02 or abs(validation['duration']-expected)>max(.25,len(clips)/fps) or validation['audio_streams']!=(0 if silent else 1):
         raise ValueError(f'Export validation failed: observed {validation}; expected {width}x{height}, {fps} fps, {expected:.6f} seconds, {0 if silent else 1} audio tracks.')
     partial=bool(settings.get('partial'))
-    add_asset(job['project_id'],None,job['id'],'export',movie,extra={'title':('Partial preview · ' if partial else '')+snapshot['title'],'partial':partial,'is_editing_preview':snapshot.get('is_editing_preview',False),'timeline_revision':snapshot['timeline_revision'],'source_asset_ids':[c['asset_id'] for c in clips],'validation':'decoded_and_probed','expected_duration':expected,'export_settings':settings,'loop_note':'Crossfade blends the boundary; it cannot guarantee matching scene content.','audio_tracks':len(tracks)})
+    add_asset(job['project_id'],None,job['id'],'export',movie,extra={'title':('Partial preview · ' if partial else '')+snapshot['title'],'partial':partial,'is_editing_preview':snapshot.get('is_editing_preview',False),'timeline_revision':snapshot['timeline_revision'],'caption_revision':snapshot.get('caption_revision',0),'source_asset_ids':[c['asset_id'] for c in clips],'validation':'decoded_and_probed','expected_duration':expected,'export_settings':settings,'loop_note':'Crossfade blends the boundary; it cannot guarantee matching scene content.','audio_tracks':len(tracks),'render_cache':cache.stats,'master_sequences':snapshot.get('master_sequences',[])})

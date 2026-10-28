@@ -2,7 +2,7 @@
 
 A local filmmaking studio for planning scenes, generating starting stills, animating their exact images, reviewing takes and assembling a movie. The public React interface connects to an authenticated Windows agent on your computer.
 
-**Release 0.18 — song timing and reviewable captions.** Lock a song, mark sections, plan visuals and fit the visual edit to the music. Create captions from a recorded script, import SRT/VTT, or recognize speech with local Qwen models and word timing. Review drafts before applying them; export separate subtitles or a selectable MP4 caption track. Shows, chapters, shared voices and qualified sound tools remain available. [Full studio release ledger](docs/FULL_SUITE_RELEASES.md). LTX, face lip-sync and singing mouth animation remain unavailable.
+**Release 0.19 — resumable editing and complete-production assembly.** Render verified sections once, resume after interruptions and rebuild affected sections after an edit. Combine current sequence exports into an episode or film. A reviewable dialogue helper can append script drafts using shared characters and continuity. Song timing, local captions, speech, music and effects remain available. [Full studio release ledger](docs/FULL_SUITE_RELEASES.md). LTX, face lip-sync and singing mouth animation remain unavailable.
 
 - [Published interface](https://rorrimaesu.github.io/sceneflow-ai-studio/)
 - [Verification ledger](docs/EVIDENCE.md)

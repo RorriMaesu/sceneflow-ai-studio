@@ -4,12 +4,37 @@ import os
 import shutil
 import subprocess
 import psutil
+import time
+from contextvars import ContextVar
 from pathlib import Path, PureWindowsPath
 
 from PIL import Image
 
 from .config import ROOT, settings
 from .store import db, encode, now, uid
+
+export_owner = ContextVar('export_owner', default=None)
+
+
+class MediaCancelled(ValueError):
+    pass
+
+
+def stop_export_worker(job_id, store=None):
+    from .storage import export_folder
+    marker=export_folder(job_id)/'worker.json'
+    if not marker.exists():return
+    owner=json.loads(marker.read_text(encoding='utf-8'))
+    try:
+        process=psutil.Process(owner['pid'])
+        if abs(process.create_time()-owner['created'])>=.01:
+            marker.unlink(missing_ok=True);return
+        matches=str(Path(process.exe()).resolve()).casefold()==owner['binary'].casefold()
+        matches=matches and (process.cmdline()==owner['arguments'] if owner.get('arguments') else any('export-'+job_id in p for p in process.cmdline()))
+        if not matches:raise ValueError('The previous export worker could not be verified. Review it before retrying.')
+        process.kill();process.wait(timeout=10)
+    except psutil.NoSuchProcess:pass
+    marker.unlink(missing_ok=True)
 
 
 def managed_path(relative):
@@ -52,23 +77,37 @@ def run_tool(arguments, timeout=180):
     from .storage import worker_environment
     environment = worker_environment()
     process = subprocess.Popen(arguments, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace', env=environment, cwd=ROOT/'temp', creationflags=0x08000000 if os.name=='nt' else 0)
-    marker=None
-    for argument in arguments[1:]:
+    marker=None;owner=export_owner.get()
+    if owner:
+        marker=owner['folder']/'worker.json'
+    for argument in ([] if marker else arguments[1:]):
         try:
             from .storage import export_folder
             parent=Path(str(argument)).resolve().parent
             if parent.name.startswith('export-') and parent==export_folder(parent.name.removeprefix('export-')).resolve():
                 marker=parent/'worker.json'
-                marker.write_text(encode({'pid':process.pid,'created':psutil.Process(process.pid).create_time(),'binary':str(Path(arguments[0]).resolve())}),encoding='utf-8');break
+                break
         except (ValueError,OSError,psutil.Error):pass
+    if marker:
+        marker.write_text(encode({'pid':process.pid,'created':psutil.Process(process.pid).create_time(),'binary':str(Path(arguments[0]).resolve()),'arguments':list(arguments)}),encoding='utf-8')
+    started=time.monotonic()
     try:
-        output,error=process.communicate(timeout=timeout)
+        while True:
+            if owner:
+                current=owner['store'].one('SELECT cancel_requested FROM jobs WHERE id=?',(owner['job_id'],))
+                if current and current['cancel_requested']:raise MediaCancelled('Export stopped. Completed sections and all source takes are kept for retry.')
+            if time.monotonic()-started>timeout:raise subprocess.TimeoutExpired(arguments,timeout)
+            try:
+                output,error=process.communicate(timeout=.5);break
+            except subprocess.TimeoutExpired:continue
         if process.returncode:raise ValueError('Media processing failed: '+error[-1500:])
         return output
     except subprocess.TimeoutExpired:
         process.kill();process.communicate()
         raise ValueError('Media processing timed out. The owned worker was stopped; source media is preserved.')
     finally:
+        if process.poll() is None:
+            process.kill();process.communicate()
         if marker:marker.unlink(missing_ok=True)
 
 
@@ -82,8 +121,11 @@ def probe(path, decode=True):
         stream = videos[0]
         numerator, denominator = stream.get('avg_frame_rate', '0/1').split('/')
         result.update(width=stream['width'], height=stream['height'], fps=float(numerator)/float(denominator or 1), frames=int(stream.get('nb_read_frames', stream.get('nb_frames', 0)) or 0), codec=stream['codec_name'])
+        if stream.get('duration'):result['video_duration']=float(stream['duration'])
+    if audios and audios[0].get('duration'):result['audio_duration']=float(audios[0]['duration'])
+    if 'video_duration' in result and 'audio_duration' in result:result['av_duration_difference']=abs(result['video_duration']-result['audio_duration'])
     if decode:
-        run_tool([executable('ffmpeg'), '-v', 'error', '-xerror', *safe_inputs, '-i', str(path), '-map', '0:v?', '-map', '0:a?', '-f', 'null', '-'], timeout=300)
+        run_tool([executable('ffmpeg'), '-v', 'error', '-xerror', *safe_inputs, '-i', str(path), '-map', '0:v?', '-map', '0:a?', '-f', 'null', '-'], timeout=max(300,min(7200,result['duration']*2)))
     return result
 
 

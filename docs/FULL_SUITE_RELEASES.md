@@ -65,6 +65,16 @@ Users can write captions, import SRT/VTT, reuse recorded-script line timing, rev
 
 Validation: 25 focused sound/caption/backup checks passed before the final exact-song-fit case; the final caption suite and interface production build accompany publication. Lip-sync was not installed or qualified; face and singing mouth animation are explicitly unavailable. The approved caption download does not include those separate models. LTX remains deferred.
 
-## Remaining phases
+## Phase 19 — Resumable sections, production assembly and dialogue drafts
 
-19: long-form sequences and resumable assembly. 20: simplified setup and staged updates. Conditional LTX testing remains skipped at the user's request. These are not claimed as delivered by Phase 18.
+Exports normalize verified inputs into content-addressed sections with hash-checked records. Cuts assemble at most eight inputs per step; transitions use a bounded pairwise tree. Completed sections survive interruption, retries and changes to unrelated clips. Cut intermediates retain lossless audio so repeated AAC priming does not accumulate between edits. Sound tracks mix in bounded groups of seven plus the previous sum, with one final limiter and delivery encode. A sequence supports up to 200 sound tracks. Final validation checks exact frames, full decoding and audio/video lengths.
+
+A production can assemble current finished sequences in episode/chapter order. Missing or stale sequence exports block assembly. A music-video master uses the locked original song once and reconstructs separate speech/effects; original clip sound must be muted and sequence lengths must cover the song. Existing sequence videos remain available. The interface protects selected sequence edit/caption drafts before requesting a master.
+
+A local story helper can propose up to 40 dialogue lines at a time using shared canon, existing cast and recent dialogue. Review appends lines and suggested preset characters; it never overwrites an existing script or queues speech automatically. Changes to the story, script or cast invalidate an older draft. Long scripts paginate in groups of 25.
+
+Actual acceptance: an isolated 20-minute project combined previous AI footage, imported test patterns and stills. The service was interrupted after two verified sections, restarted and resumed successfully. Two ten-minute sequences assembled into 14,400 frames at 320×180/12 fps, with stereo 48 kHz audio, full decoding and zero measured duration difference. Changing one clip's volume rebuilt three sections and reused 32. Sampled owned-process RAM peaked near 0.24 GiB during that small-delivery-size test; this is not a feature-film diffusion or 1080p performance claim. Thirteen existing media integration checks and five new recovery/assembly/script checks passed locally; the final interface build and full CI accompany publication.
+
+## Remaining work
+
+20: simplified setup and staged updates. Conditional LTX testing remains skipped at the user's request. Face lip-sync and singing mouth animation remain unavailable until their separate approved model/runtime/test path is installed.

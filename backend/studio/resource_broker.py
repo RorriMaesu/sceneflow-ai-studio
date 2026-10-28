@@ -13,7 +13,7 @@ from .resources import resources
 from .store import db, encode, now
 
 GIB = 1024 ** 3
-GPU_KINDS = {'image', 'video', 'plan', 'director', 'qa', 'outline', 'speech', 'music', 'effects', 'transcribe', 'align', 'lipsync', 'enhance'}
+GPU_KINDS = {'image', 'video', 'plan', 'director', 'qa', 'outline', 'script', 'speech', 'music', 'effects', 'transcribe', 'align', 'lipsync', 'enhance'}
 ACTIVE = {'running', 'submitted', 'reconciling'}
 
 
@@ -92,7 +92,7 @@ def required(job):
         return {'gpu_free': min(14 * GIB, (10 + scale) * GIB), 'ram_free': min(16 * GIB, (6 + 2 * scale) * GIB), 'basis': 'Conservative admission for the existing offloaded Wan preset; measured peaks are recorded per task.'}
     if kind == 'image':
         return {'gpu_free': 10 * GIB, 'ram_free': 6 * GIB, 'basis': 'Existing offloaded still workflow.'}
-    if kind in {'plan', 'director', 'qa', 'outline'}:
+    if kind in {'plan', 'director', 'qa', 'outline', 'script'}:
         return {'gpu_free': 9 * GIB, 'ram_free': 3 * GIB, 'basis': 'Bounded local planning/review. Provider checks the selected model separately.'}
     profile = snapshot.get('resource_profile')
     if not isinstance(profile, dict) or set(profile) - {'gpu_free', 'ram_free', 'basis'}:
@@ -159,12 +159,14 @@ class ResourceBroker:
                 if response.status_code == 200 and response.json().get('models'):
                     return 'Waiting for an existing story-helper session to finish or unload. Other sessions are preserved.'
             except (httpx.HTTPError, ValueError):
-                if job['kind'] in {'plan', 'director', 'qa', 'outline'}:
+                if job['kind'] in {'plan', 'director', 'qa', 'outline', 'script'}:
                     return 'The local story helper is unavailable. Start it and this task can continue.'
         return None
 
     async def acquire(self, job, recovering=False):
         if job['kind'] not in GPU_KINDS:
+            if job['kind'] in {'export','master_export'} and resources().get('ram_available',0)<3*GIB:
+                return 'Waiting for enough computer memory to assemble video. Close memory-heavy apps; saved render sections are kept.'
             return None
         migrate()
         if self.job_id == job['id']:
