@@ -137,7 +137,7 @@ async def install_runtime(body:Install,session=Depends(require_session)):
 
 
 class Probe(Strict):
-    seconds:float|None=Field(default=None,ge=1,le=60,allow_inf_nan=False)
+    seconds:float|None=Field(default=None,ge=1,le=240,allow_inf_nan=False)
     vocal:bool=False
 
 

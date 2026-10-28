@@ -2,7 +2,7 @@
 
 A local filmmaking studio for planning scenes, generating starting stills, animating their exact images, reviewing takes and assembling a movie. The public React interface connects to an authenticated Windows agent on your computer.
 
-**Release 0.17 — shows, movies and shared story planning.** Create a short video, series, movie or music video. A production holds seasons/episodes or chapters and manageable sequences. Episodes share a cast and story guide while keeping their scenes and edits separate. The local Director can propose a whole season for review without starting footage. Speech, music and effects remain available through the qualified sound workflow. [Full studio release ledger](docs/FULL_SUITE_RELEASES.md). LTX remains deferred.
+**Release 0.18 — song timing and reviewable captions.** Lock a song, mark sections, plan visuals and fit the visual edit to the music. Create captions from a recorded script, import SRT/VTT, or recognize speech with local Qwen models and word timing. Review drafts before applying them; export separate subtitles or a selectable MP4 caption track. Shows, chapters, shared voices and qualified sound tools remain available. [Full studio release ledger](docs/FULL_SUITE_RELEASES.md). LTX, face lip-sync and singing mouth animation remain unavailable.
 
 - [Published interface](https://rorrimaesu.github.io/sceneflow-ai-studio/)
 - [Verification ledger](docs/EVIDENCE.md)

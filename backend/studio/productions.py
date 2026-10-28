@@ -34,7 +34,7 @@ def get(identifier):
 
 def membership(project_id,store=None):
     store=store or db
-    migrate(store)
+    if not store.one("SELECT name FROM sqlite_master WHERE type='table' AND name='production_sequences'"):return None
     return store.one('SELECT p.id production_id,p.root_project_id,p.title production_title,p.purpose,p.canon,p.revision canon_revision,e.*,s.position sequence_position,s.title sequence_title FROM production_sequences s JOIN production_episodes e ON e.id=s.episode_id JOIN productions p ON p.id=e.production_id WHERE s.project_id=?',(project_id,))
 
 def cast_scope(project_id,store=None):
@@ -104,11 +104,12 @@ async def current(identifier:str,session=Depends(require_session)):
 @router.post('/productions')
 async def create(body:NewProduction,session=Depends(require_session)):
     migrate()
-    root=db.create_project(body.title,body.brief,'manual',{'production_root':True,'auto_export':False})
+    root=db.create_project(body.title,body.brief,'manual',{'production_root':True,'production_purpose':body.purpose,'auto_export':False})
     identifier=uid()
     with db.connect(True) as con:
         con.execute('UPDATE projects SET archived=1 WHERE id=?',(root['id'],))
         con.execute('INSERT INTO productions VALUES(?,?,?,?,?,?,?,?,?)',(identifier,body.title,body.purpose,body.brief,'',1,root['id'],now(),now()))
+        if body.purpose=='music_video':_episode(con,{'id':identifier,'title':body.title,'root_project_id':root['id']},1,1,'Main video',body.brief)
     return get(identifier)
 @router.patch('/productions/{identifier}/canon')
 async def canon(identifier:str,body:Canon,session=Depends(require_session)):

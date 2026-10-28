@@ -92,6 +92,10 @@ def queue_export(project_id,automatic=False,preview=False):
     if not timeline or not timeline['clips']:
         raise ValueError('Build and save a timeline before exporting.')
     frozen={'project_id':project_id,'scene_id':None,'title':project['title'],'timeline':timeline,'timeline_revision':timeline['revision']}
+    from .music_planning import captions
+    subtitles=captions(project_id,db)
+    if subtitles['source'].get('include_mp4') and subtitles['items']:
+        frozen.update(captions=subtitles['items'],caption_revision=subtitles['revision'])
     if preview:
         config=timeline['settings'];factor=min(1,640/max(config['width'],config['height']))
         timeline['settings']={**config,'width':max(64,int(config['width']*factor/2)*2),'height':max(64,int(config['height']*factor/2)*2),'fps':min(24,config['fps']),'codec':'h264','crf':28}

@@ -326,6 +326,10 @@ from .routes_audio import router as audio_router
 app.include_router(audio_router)
 from .productions import router as productions_router
 app.include_router(productions_router)
+from .music_planning import router as music_router
+app.include_router(music_router)
+from .caption_engine import router as caption_router
+app.include_router(caption_router)
 
 
 @app.get('/{path:path}')

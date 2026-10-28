@@ -1,0 +1,9 @@
+setuptools==71.1.0
+wheel
+numpy==1.26.4
+torch @ https://download-r2.pytorch.org/whl/cu128/torch-2.9.0%2Bcu128-cp312-cp312-win_amd64.whl#sha256=c97dc47a1f64745d439dd9471a96d216b728d528011029b4f9ae780e985529e0
+torchaudio @ https://download-r2.pytorch.org/whl/cu128/torchaudio-2.9.0%2Bcu128-cp312-cp312-win_amd64.whl#sha256=90cd2b4d7c375c9a5c2d79117985f8f506718f494914ad9b5c5dee5581216898
+transformers==5.21.0
+accelerate==1.12.0
+librosa==0.11.0
+soundfile==0.13.1

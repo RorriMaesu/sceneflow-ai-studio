@@ -145,7 +145,16 @@ def execute(job,snapshot):
     silent=settings.get('audio_mode','silent')=='silent' or not has_audio
     if silent:
         output=root/'silent.mp4';ffmpeg(['-i',str(movie),'-map','0:v:0','-an','-c:v','copy','-movflags','+faststart',str(output)]);movie=output
+    subtitle_items=snapshot.get('captions',[])
+    if subtitle_items:
+        from .music_planning import subtitle_text
+        if any(item['end']>expected+.25 for item in subtitle_items):raise ValueError('Captions extend past the video. Trim their times or lengthen your saved edit before exporting.')
+        subtitle=root/'captions.srt';subtitle.write_text(subtitle_text(subtitle_items),encoding='utf-8')
+        output=root/'captioned.mp4'
+        ffmpeg(['-i',str(movie),'-f','srt','-i',str(subtitle),'-map','0:v:0','-map','0:a?','-map','1:0','-c:v','copy','-c:a','copy','-c:s','mov_text','-metadata:s:s:0','language=und','-movflags','+faststart',str(output)])
+        movie=output
     validation=probe(movie)
+    if validation.get('subtitle_streams',0)!=(1 if subtitle_items else 0):raise ValueError('The finished video did not contain the expected caption track.')
     if validation['width']!=width or validation['height']!=height or abs(validation['fps']-fps)>.02 or abs(validation['duration']-expected)>max(.25,len(clips)/fps) or validation['audio_streams']!=(0 if silent else 1):
         raise ValueError(f'Export validation failed: observed {validation}; expected {width}x{height}, {fps} fps, {expected:.6f} seconds, {0 if silent else 1} audio tracks.')
     partial=bool(settings.get('partial'))

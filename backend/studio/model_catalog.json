@@ -370,104 +370,91 @@
     {
       "id": "captions",
       "name": "Captions",
-      "repo": "Qwen/Qwen3-ASR-0.6B",
-      "revision": "5eb144179a02acc5e5ba31e748d22b0cf3e303b0",
+      "repo": "Qwen/Qwen3-ASR-0.6B-hf",
+      "revision": "7f1569a48a89f3e3f4dc3a5c9d28bddd903bc76c",
       "license": "Apache 2.0",
-      "source": "https://huggingface.co/Qwen/Qwen3-ASR-0.6B",
+      "source": "https://huggingface.co/Qwen/Qwen3-ASR-0.6B-hf",
       "setup_note": "Transcribe speech, then review the words.",
       "gated": false,
       "files": [
         {
-          "path": "chat_template.json",
-          "bytes": 1161,
-          "git_blob_sha1": "c44736493efd71ec96218cc626904698cdb13235"
-        },
-        {
           "path": "config.json",
-          "bytes": 6193,
-          "git_blob_sha1": "8113d596dec2d1a2ef4552edfe005ee84d16d9ec"
+          "bytes": 2398,
+          "git_blob_sha1": "3b4221f651b59ec21f545e5852b4d6cb23420b09"
         },
         {
           "path": "generation_config.json",
-          "bytes": 142,
-          "git_blob_sha1": "7382a4d347c0a865b76bb1b8277f66a5ac312854"
-        },
-        {
-          "path": "merges.txt",
-          "bytes": 1671853,
-          "git_blob_sha1": "31349551d90c7606f325fe0f11bbb8bd5fa0d7c7"
+          "bytes": 165,
+          "git_blob_sha1": "3ed98c80087572bad932a83279c5602e58bbfc5c"
         },
         {
           "path": "model.safetensors",
-          "bytes": 1876091704,
-          "sha256": "79d6cbd4c98c7bbffe9db2edac07f56cd6637d0d5944b27f6c2b8353840323ea"
+          "bytes": 1564928088,
+          "sha256": "d3f212dd20abecd315d830bc54ae3865e56ebfc3276484e57b771288ba27fd35"
         },
         {
-          "path": "preprocessor_config.json",
-          "bytes": 330,
-          "git_blob_sha1": "8f7f07346466d5d494ec0d4969d1c3d0190eed72"
+          "path": "processor_config.json",
+          "bytes": 487,
+          "git_blob_sha1": "a07dff48032bed341260501d6688036c6fd7f3ef"
+        },
+        {
+          "path": "tokenizer.json",
+          "bytes": 11429653,
+          "sha256": "fe1fad59be22a41ee293363fcf95fdedbc7c93f3b49270b1d2e18bd1399a7a05"
         },
         {
           "path": "tokenizer_config.json",
-          "bytes": 12487,
-          "git_blob_sha1": "b93109843922a40c6654c5449d3bf95372267c66"
+          "bytes": 998,
+          "git_blob_sha1": "aa62b6c06ab8a704dc0895420fb1d2515954a49c"
         },
         {
-          "path": "vocab.json",
-          "bytes": 2776833,
-          "git_blob_sha1": "4783fe10ac3adce15ac8f358ef5462739852c569"
+          "path": "chat_template.jinja",
+          "bytes": 1434,
+          "runtime_code": true,
+          "git_blob_sha1": "491fff331513a97316daf53591c7b9b9da53ef8c"
         }
       ]
     },
     {
       "id": "alignment",
       "name": "Word timing",
-      "repo": "Qwen/Qwen3-ForcedAligner-0.6B",
-      "revision": "c7cbfc2048c462b0d63a45797104fc9db3ad62b7",
+      "repo": "Qwen/Qwen3-ForcedAligner-0.6B-hf",
+      "revision": "c07281df297b9905d24a508279258cccf987a064",
       "license": "Apache 2.0",
-      "source": "https://huggingface.co/Qwen/Qwen3-ForcedAligner-0.6B",
+      "source": "https://huggingface.co/Qwen/Qwen3-ForcedAligner-0.6B-hf",
       "setup_note": "Match known words to speech in supported languages.",
       "gated": false,
       "files": [
         {
-          "path": "chat_template.json",
-          "bytes": 1161,
-          "git_blob_sha1": "c44736493efd71ec96218cc626904698cdb13235"
-        },
-        {
           "path": "config.json",
-          "bytes": 5982,
-          "git_blob_sha1": "7b9883fe52d0ba896773687a7fdad38eacab062d"
-        },
-        {
-          "path": "generation_config.json",
-          "bytes": 115,
-          "git_blob_sha1": "b0a540032cf7b6b5ba1438d04ab69b7e787d9b8e"
-        },
-        {
-          "path": "merges.txt",
-          "bytes": 1671853,
-          "git_blob_sha1": "31349551d90c7606f325fe0f11bbb8bd5fa0d7c7"
+          "bytes": 248029,
+          "git_blob_sha1": "74b91ca23584bdebd82ffaaeb21f72444baa2dd8"
         },
         {
           "path": "model.safetensors",
-          "bytes": 1835544544,
-          "sha256": "47831d0e82f96b20e9034dba01a075ee06436654719f6a68289e49f1b65ce0e7"
+          "bytes": 1835545960,
+          "sha256": "00568245ceca5af1991d28562a75fe1ddc9bfeb041c27fda66947ea05c47fb86"
         },
         {
-          "path": "preprocessor_config.json",
-          "bytes": 330,
-          "git_blob_sha1": "8f7f07346466d5d494ec0d4969d1c3d0190eed72"
+          "path": "processor_config.json",
+          "bytes": 487,
+          "git_blob_sha1": "a07dff48032bed341260501d6688036c6fd7f3ef"
+        },
+        {
+          "path": "tokenizer.json",
+          "bytes": 11429842,
+          "sha256": "cadfb9cbd9ff8f4e309075ec6a71b063295ff796afb4b5dbc0fd2873fbb301f2"
         },
         {
           "path": "tokenizer_config.json",
-          "bytes": 12666,
-          "git_blob_sha1": "3df92df83b22342e36a7b11cf9a70de2a2996bec"
+          "bytes": 998,
+          "git_blob_sha1": "aa62b6c06ab8a704dc0895420fb1d2515954a49c"
         },
         {
-          "path": "vocab.json",
-          "bytes": 2776833,
-          "git_blob_sha1": "4783fe10ac3adce15ac8f358ef5462739852c569"
+          "path": "chat_template.jinja",
+          "bytes": 551,
+          "runtime_code": true,
+          "git_blob_sha1": "1d6020e0ee6f66499d674a3fc2bbae5a99482c0e"
         }
       ]
     },

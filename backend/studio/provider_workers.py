@@ -121,7 +121,7 @@ async def run(job, runtime_id, inputs, timeout=1800):
     if broker.job_id != job['id']:
         raise ValueError('This task must enter the shared graphics queue before a model can start.')
     python = runtime_python(runtime_id)
-    script = ROOT / 'backend' / 'provider_worker.py'
+    script = ROOT / 'backend' / ('caption_worker.py' if runtime_id=='captions' else 'provider_worker.py')
     if not script.is_file():
         raise ValueError('This creation provider is not included in the installed release yet.')
     folder = storage.cache_file('worker-' + job['id'])
@@ -147,6 +147,13 @@ async def run(job, runtime_id, inputs, timeout=1800):
             db.execute('INSERT OR REPLACE INTO provider_workers VALUES(?,?,?,?,?,?,?,?)', tuple(row.values()))
             started = now()
             while process.poll() is None:
+                progress_file=folder/'progress.json'
+                try:
+                    if progress_file.is_file() and progress_file.stat().st_size<4096:
+                        progress=json.loads(progress_file.read_text(encoding='utf-8'));fraction=progress.get('progress')
+                        if progress.get('job_id')==job['id'] and progress.get('nonce')==nonce and isinstance(fraction,(int,float)) and 0<=fraction<=.95:
+                            db.execute('UPDATE jobs SET progress=? WHERE id=?',(fraction,job['id']))
+                except (OSError,ValueError):pass
                 current = db.one('SELECT cancel_requested FROM jobs WHERE id=?', (job['id'],))
                 if current and current['cancel_requested']:
                     if not await asyncio.to_thread(stop_owned, row):

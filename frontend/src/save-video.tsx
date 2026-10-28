@@ -33,7 +33,8 @@ export function SaveVideoPage({
         "timeline." + project.id,
         (v) => Array.isArray(v?.clips) && !!v?.settings,
       );
-      return !!d && changed(d.value, d.baseline);
+      const c=readDraft<any>(localStorage,'captions.'+project.id,v=>Array.isArray(v?.items));
+      return !!d && changed(d.value, d.baseline) || !!c && changed(c.value,c.baseline);
     } catch {
       return false;
     }

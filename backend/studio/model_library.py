@@ -80,6 +80,11 @@ def list_packs():
                         state, reason = 'ready', 'A sample passed on this PC. Listen to it before using this tool in your story.'
                     else:
                         reason = 'Program and model files are ready. Run a sample to check this PC.'
+                elif value['id'] in {'captions','alignment'}:
+                    from .caption_engine import runtime,qualification as caption_qualification
+                    if not runtime():state,reason='needs_runtime','Model files downloaded. Finish the separate caption program setup.'
+                    elif caption_qualification(value['id']):state,reason='ready','A short recording passed. Review caption words and timings before applying them.'
+                    else:state,reason='needs_test','In a sequence, open Edit → Captions and test a recording up to 30 seconds. Recognition produces a draft for review.'
             except ValueError:
                 state = 'storage_missing'
                 reason = 'Reconnect the drive that holds this tool.'

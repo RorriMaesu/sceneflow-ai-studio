@@ -25,7 +25,7 @@ class Place(Strict):
 class Cue(Strict):
     kind:str=Field(pattern='^(music|effects)$')
     prompt:str=Field(min_length=1,max_length=2000)
-    seconds:float=Field(ge=1,le=60,allow_inf_nan=False)
+    seconds:float=Field(ge=1,le=240,allow_inf_nan=False)
     lyrics:str=Field(default='',max_length=6000)
     instrumental:bool=True
     seed:int=Field(default=26102026,ge=0,lt=2**63)
@@ -34,7 +34,7 @@ class Cue(Strict):
 @router.get('/projects/{project_id}/sound')
 async def view(project_id:str,session=Depends(require_session)):
     return {**script_audio.view(project_id),'voices':audio_engine.VOICES,'languages':audio_engine.LANGUAGES,
-            'tools':{key:{'ready':audio_engine.pack_ready(key),'tested_seconds':(audio_engine.qualification(key) or {}).get('body',{}).get('tested_seconds'),'vocal':'vocal' in (audio_engine.qualification(key) or {}).get('body',{}).get('capabilities',[])} for key in ['voices-small','music','effects']}}
+            'tools':{key:{'ready':audio_engine.pack_ready(key),'tested_seconds':(audio_engine.qualification(key) or {}).get('body',{}).get('tested_seconds'),'tested_lengths':(audio_engine.qualification(key) or {}).get('body',{}).get('tested_lengths',{}),'vocal':'vocal' in (audio_engine.qualification(key) or {}).get('body',{}).get('capabilities',[])} for key in ['voices-small','music','effects']}}
 @router.post('/projects/{project_id}/cast')
 async def cast(project_id:str,body:Cast,session=Depends(require_session)):
     return script_audio.add_cast(project_id,**body.model_dump())

@@ -20,7 +20,7 @@ def adapter_hash(pack_id):
 PROVIDERS = {
     'voices-small': {'runtime': 'speech', 'kind': 'speech', 'role': 'voiceover', 'gpu_free': 6*GIB, 'ram_free': 6*GIB, 'max_seconds': 30, 'max_chars': 600, 'instructions': False},
     'voices-character': {'runtime': 'speech', 'kind': 'speech', 'role': 'voiceover', 'gpu_free': 8*GIB, 'ram_free': 8*GIB, 'max_seconds': 30, 'max_chars': 600, 'instructions': False},
-    'music': {'runtime': 'music', 'kind': 'music', 'role': 'music', 'gpu_free': 11*GIB, 'ram_free': 9*GIB, 'max_seconds': 60},
+    'music': {'runtime': 'music', 'kind': 'music', 'role': 'music', 'gpu_free': 11*GIB, 'ram_free': 9*GIB, 'max_seconds': 240},
     'effects': {'runtime': 'effects', 'kind': 'effects', 'role': 'effects', 'gpu_free': 10*GIB, 'ram_free': 10*GIB, 'max_seconds': 10},
 }
 LANGUAGES = ('English','Chinese','Japanese','Korean','German','French','Russian','Portuguese','Spanish','Italian')
@@ -131,6 +131,7 @@ def queue_sound(project_id,pack_id,inputs,scene_id=None,setup_probe=False,automa
         if pack_id=='music' and not inputs.get('instrumental',True) and not setup_probe and 'vocal' not in measured['body'].get('capabilities',[]):raise ValueError('Run the singing sample in Setup before creating a song with vocals.')
         duration=inputs.get('seconds',5)
         limit=min(spec['max_seconds'],measured['body'].get('tested_seconds') or spec['max_seconds']) if measured and not setup_probe else spec['max_seconds']
+        if pack_id=='music' and measured and not setup_probe:limit=min(spec['max_seconds'],measured['body'].get('tested_lengths',{}).get('instrumental' if inputs.get('instrumental',True) else 'vocal',limit))
         if not isinstance(duration,(int,float)) or not 1<=duration<=limit:raise ValueError(f'This PC has passed cues up to {limit} seconds. Use that length or run a longer sample test in Setup.')
         if not str(inputs.get('prompt','')).strip() or len(inputs['prompt'])>2000:raise ValueError('Describe the sound in up to 2000 characters.')
         if len(str(inputs.get('lyrics','')))>6000:raise ValueError('Keep the lyrics under 6000 characters.')
@@ -140,7 +141,7 @@ def queue_sound(project_id,pack_id,inputs,scene_id=None,setup_probe=False,automa
         previous=db.one('SELECT body FROM audio_qualifications WHERE pack_id=? AND revision=? ORDER BY created DESC LIMIT 1',(pack_id,value['revision']))
         if previous:fingerprints=json.loads(previous['body']).get('fingerprints',{})
     profile={'gpu_free':spec['gpu_free'],'ram_free':spec['ram_free'],'basis':'Short setup probe; fit is not assumed until this exact profile succeeds.' if setup_probe else 'Qualified local sound profile; exact model/runtime/hardware revisions are frozen.'}
-    if measured and not setup_probe:profile=measured['body']['profile']
+    if measured:profile=measured['body']['profile']
     snapshot={'project_id':project_id,'scene_id':scene_id,'pack_id':pack_id,'pack_revision':value['revision'],'root_id':installed['root_id'],
               'runtime_id':spec['runtime'],'runtime_hash':json.loads(runtime['manifest'])['hash'],'hardware':fingerprint(),
               'adapter_hash':adapter_hash(pack_id),

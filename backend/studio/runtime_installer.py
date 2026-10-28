@@ -16,8 +16,8 @@ from . import storage, provider_workers
 from .store import db, encode, now, uid
 
 LOCKS = Path(__file__).resolve().parents[1] / 'runtime-locks'
-PACK_RUNTIME = {'voices-small': 'speech', 'voices-character': 'speech', 'music': 'music', 'effects': 'effects'}
-IMPORTS = {'speech': ['qwen_tts', 'torch', 'soundfile'], 'music': ['acestep.handler', 'acestep.inference', 'acestep.llm_inference'], 'effects': ['moss_soundeffect_v2']}
+PACK_RUNTIME = {'voices-small': 'speech', 'voices-character': 'speech', 'music': 'music', 'effects': 'effects','captions':'captions','alignment':'captions'}
+IMPORTS = {'speech': ['qwen_tts', 'torch', 'soundfile'], 'music': ['acestep.handler', 'acestep.inference', 'acestep.llm_inference'], 'effects': ['moss_soundeffect_v2'],'captions':['transformers.models.qwen3_asr','torch','soundfile','librosa']}
 
 
 class SetupUnconfirmed(Exception):

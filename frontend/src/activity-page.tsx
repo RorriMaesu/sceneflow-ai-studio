@@ -24,6 +24,8 @@ const kinds: Record<string, string> = {
   music: "Music creation",
   effects: "Sound effect creation",
   outline: "Season or chapter planning",
+  transcribe: "Caption creation",
+  align: "Word timing",
 };
 export function ActivityPage({
   projects,
@@ -143,7 +145,7 @@ export function ActivityPage({
               </button>
             )}
             {["submitted", "reconciling"].includes(j.status) &&
-              ["image", "video", "speech", "music", "effects"].includes(j.kind) && (
+              ["image", "video", "speech", "music", "effects", "transcribe", "align"].includes(j.kind) && (
                 <button
                   className="button"
                   onClick={() =>

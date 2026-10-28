@@ -77,7 +77,7 @@ def probe(path, decode=True):
     data = json.loads(run_tool([executable('ffprobe'), '-v', 'error', *safe_inputs, '-show_format', '-show_streams', '-count_frames', '-of', 'json', str(path)]))
     videos = [s for s in data['streams'] if s['codec_type']=='video']
     audios = [s for s in data['streams'] if s['codec_type']=='audio']
-    result = {'duration': float(data.get('format', {}).get('duration', 0)), 'bytes': path.stat().st_size, 'audio_streams': len(audios), 'audio': [{'sample_rate': s.get('sample_rate'), 'channels': s.get('channels'), 'channel_layout': s.get('channel_layout')} for s in audios]}
+    result = {'duration': float(data.get('format', {}).get('duration', 0)), 'bytes': path.stat().st_size, 'audio_streams': len(audios), 'subtitle_streams':sum(s['codec_type']=='subtitle' for s in data['streams']), 'audio': [{'sample_rate': s.get('sample_rate'), 'channels': s.get('channels'), 'channel_layout': s.get('channel_layout')} for s in audios]}
     if videos:
         stream = videos[0]
         numerator, denominator = stream.get('avg_frame_rate', '0/1').split('/')

@@ -117,7 +117,7 @@ def queue_snapshot(kind, snapshot, automatic=False, force=False, dependencies=No
     if kind in ['image','video']:
         identity={k:frozen.get(k) for k in ['project_id','scene_id','seed','workflow_hash','source_sha256']}
         identity['inputs']=snapshot_signature(frozen,kind)
-    elif kind in {'speech','music','effects'}:identity={k:v for k,v in frozen.items() if k not in {'automatic','manual_override','manual_requested_at'}}
+    elif kind in {'speech','music','effects','transcribe','align'}:identity={k:v for k,v in frozen.items() if k not in {'automatic','manual_override','manual_requested_at'}}
     else:identity={k:v for k,v in frozen.items() if k!='automatic'}
     request_key = hashlib.sha256(encode({'kind':kind,'snapshot':identity}).encode()).hexdigest()
     if not force:
@@ -300,7 +300,7 @@ class Dispatcher:
         migrate()
         from .provider_workers import recovery
         await asyncio.to_thread(recovery,db)
-        db.execute("UPDATE jobs SET status='needs_attention',error='Studio stopped before this sound task finished. Review and retry; earlier takes are preserved.' WHERE status='running' AND kind IN ('speech','music','effects') AND NOT EXISTS (SELECT 1 FROM provider_workers w WHERE w.job_id=jobs.id AND w.status='running')")
+        db.execute("UPDATE jobs SET status='needs_attention',error='Studio stopped before this sound task finished. Review and retry; earlier takes are preserved.' WHERE status='running' AND kind IN ('speech','music','effects','transcribe','align') AND NOT EXISTS (SELECT 1 FROM provider_workers w WHERE w.job_id=jobs.id AND w.status='running')")
         from .director import migrate as migrate_director
         migrate_director()
         db.execute("UPDATE director_commands SET status='needs_attention',error='Agent restarted during a reviewed command. Inspect queued work before requesting it again.' WHERE status='running'")
@@ -708,7 +708,10 @@ class Dispatcher:
                     break
 
     async def execute_other(self,job,snapshot):
-        if job['kind']=='outline':
+        if job['kind'] in {'transcribe','align'}:
+            from .caption_engine import execute
+            await execute(job,snapshot)
+        elif job['kind']=='outline':
             from .productions import execute_outline
             await execute_outline(job,snapshot)
         elif job['kind'] in ['speech','music','effects']:

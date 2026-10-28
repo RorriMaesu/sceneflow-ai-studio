@@ -93,6 +93,7 @@ def migrate():
 def context(project,selected=None):
     from .adapters import registry
     from .productions import membership
+    from .music_planning import context as music_context
     member=membership(project['id'],db)
     shared={k:member[k] for k in ['production_title','purpose','canon_revision','season','number','title','start_state','end_state']} if member else None
     if shared:shared['canon']=member['canon'][:6000]
@@ -100,7 +101,7 @@ def context(project,selected=None):
     ordered=sorted(project['scenes'],key=lambda s:s['id']!=selected)
     index=[{'id':s['id'],'revision':s['revision'],'title':s['title'][:80],'summary':s['body'].get('summary','')[:70]} for s in ordered[:40]]
     detailed=[s for s in project['scenes'] if s['id']==selected][:1]
-    return {'shared_production':shared,'title':project['title'],'brief':project['brief'][:3000],'style_guide':project['settings'].get('style_guide','')[:1500],'characters':str(project['settings'].get('characters',[]))[:1000],'scene_index':index,'visual_rules':project['settings'].get('visual_rules','')[:1500],'reference_asset_ids':project['settings'].get('reference_asset_ids',[]),'production_mode':project['mode'],'selected_assets':[{'scene_id':s['id'],'still':s['selected_image_id'],'video':s['selected_video_id']} for s in ordered[:40]],'available_workflows':[{'id':w['id'],'task':w['task'],'status':w['status']} for w in registry.list()],'omitted_scenes':max(0,len(ordered)-40),'selected_scenes':[{'id':s['id'],'body':{k:str(v)[:1200] for k,v in s['body'].items() if k in ['summary','image_prompt','video_prompt']}} for s in detailed]}
+    return {'music':music_context(project['id'],db),'shared_production':shared,'title':project['title'],'brief':project['brief'][:3000],'style_guide':project['settings'].get('style_guide','')[:1500],'characters':str(project['settings'].get('characters',[]))[:1000],'scene_index':index,'visual_rules':project['settings'].get('visual_rules','')[:1500],'reference_asset_ids':project['settings'].get('reference_asset_ids',[]),'production_mode':project['mode'],'selected_assets':[{'scene_id':s['id'],'still':s['selected_image_id'],'video':s['selected_video_id']} for s in ordered[:40]],'available_workflows':[{'id':w['id'],'task':w['task'],'status':w['status']} for w in registry.list()],'omitted_scenes':max(0,len(ordered)-40),'selected_scenes':[{'id':s['id'],'body':{k:str(v)[:1200] for k,v in s['body'].items() if k in ['summary','image_prompt','video_prompt']}} for s in detailed]}
 
 
 async def model_details(model,client=None):
@@ -321,6 +322,8 @@ async def execute_ai(job,snapshot):
             creative=snapshot['context']
             if job['kind']=='plan':
                 system='You are a practical film director planning short image-first clips for local Qwen Image and Wan 2.2 on a 16 GB GPU. Produce separate still-image composition prompts and image-to-video motion prompts. Preserve character identity and style. Use one or two readable actions per shot, a locked camera unless requested, no unsupported transformations or camera cuts. Each duration must be between 1 and 5 seconds. Return the exact requested scene count. Do not invent installed capabilities. Character and style rules apply to every scene.'
+                music_section=(creative.get('music') or {}).get('section')
+                if music_section:system+=' Cover at least '+str(music_section['target_seconds'])+' seconds across the requested shots. Follow the selected song section and visual theme. Extra visuals can be trimmed; never stretch or regenerate the locked song.'
                 messages=[{'role':'system','content':system},{'role':'user','content':encode({'creative_context':creative,'scene_count':snapshot['scene_count']})}]
                 if snapshot['scene_count']<=4:
                     plan=await structured(client,model,messages,StoryPlan)

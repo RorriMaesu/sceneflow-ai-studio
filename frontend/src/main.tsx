@@ -80,6 +80,7 @@ import { FriendlySettings } from "./settings-page";
 import { StudioSetup } from "./studio-setup";
 import { SoundStudio } from "./sound-studio";
 import { ProductionsHub,ProductionNavigator } from './productions';
+import { TimingCaptions } from './timing-captions';
 import { ProjectSteps, NextStep, StoryGuide, HelpPage } from "./guided-project";
 import { PAGE_NAMES, STEPS } from "./flow";
 import { NewVideoWizard } from "./new-video";
@@ -470,7 +471,7 @@ function Studio() {
     options?: NewVideoOptions,
   ) {
     if(options?.purpose && options.purpose!=='short'){
-      return act(async()=>{const p=await request('/api/productions',{title,brief,purpose:options.purpose});setProductionFocus(p.id);go('Overview');return p;},'Production created. Plan its episodes or chapters before making footage.');
+      return act(async()=>{const p=await request('/api/productions',{title,brief,purpose:options.purpose});setProductionFocus(p.id);if(options.purpose==='music_video'&&p.episodes[0]?.sequences[0]){choose(p.episodes[0].sequences[0].project_id);go('Timeline');}else go('Overview');return p;},'Production created. Plan it before making footage.');
     }
     const created = await act(
       async () => {
@@ -1374,12 +1375,15 @@ function Studio() {
                       act={act}
                     />
                   ) : page === "Timeline" ? (
+                    <>
+                    <TimingCaptions key={'timing-'+project.id} project={project} act={act} goSetup={()=>go('Setup')} models={data?.services.ollama.models||[]} goPlanning={()=>go('AI Director')}/>
                     <TimelineEditor
                       key={project.id}
                       project={project}
                       act={act}
                       renderMedia={(a) => <Media asset={a} controls />}
                     />
+                    </>
                   ) : page === "Exports" ? (
                     <SaveVideoPage
                       key={project.id}

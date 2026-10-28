@@ -45,16 +45,17 @@ async def receive(file,suffix,limit):
 
 
 @router.post('/projects/{identifier}/import-media')
-async def import_media(identifier:str,file:UploadFile,scene_id:str|None=None,session=Depends(require_session)):
+async def import_media(identifier:str,file:UploadFile,scene_id:str|None=None,role:str|None=None,session=Depends(require_session)):
     db.project(identifier)
     if scene_id and db.scene(scene_id)['project_id']!=identifier:raise ValueError('Scene and project do not match.')
     suffix=Path(file.filename or '').suffix.lower()
     kind='video' if suffix in ['.mp4','.webm','.mkv','.mov'] else 'audio' if suffix in ['.wav','.mp3','.flac','.ogg','.m4a'] else None
     if not kind:raise ValueError('Import a standard video or audio file.')
+    if role is not None and role not in ['music','voiceover','effects']:raise ValueError('Choose music, speech or sound effects for imported audio.')
     if kind=='video' and not scene_id:raise ValueError('Select a scene for imported video.')
     path=await receive(file,suffix,2*1024**3)
     try:
-        asset=await asyncio.to_thread(add_asset,identifier,scene_id,None,kind,path,None,{'provenance':'user_import','original_name':Path(file.filename).name})
+        asset=await asyncio.to_thread(add_asset,identifier,scene_id,None,kind,path,None,{'provenance':'user_import','original_name':Path(file.filename).name,**({'role':role} if role and kind=='audio' else {})})
         if kind=='video':select_asset(asset['id'],True)
         return {'asset_id':asset['id']}
     finally:path.unlink(missing_ok=True)

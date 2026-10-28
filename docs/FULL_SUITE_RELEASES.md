@@ -55,6 +55,16 @@ The Director can propose up to 24 connected episodes/chapters in one bounded out
 
 A real local three-episode outline was generated, reviewed in the browser and applied. All three sequences had zero footage/sound jobs and zero assets; the same cast ID was visible across the three episodes. Six final planning checks passed, including stale outlines, duplicate episode numbers, shared cast with separate scripts, ownership boundaries and revision-protected episode edits. The earlier combined 18-check sound/planning/restart run passed. The production interface build and full CI accompany publication.
 
+## Phase 18 — Song masters, sections and captions
+
+Music-video productions share a hash-locked original song. Editable section markers and bounded visual planning respect that source. Fitting visuals trims the saved edit to a frame-rounded song duration, uses straight cuts and plays once; it refuses insufficient visuals or speech/effects extending past the song. The original recording and earlier takes remain intact. Song settings, assignments, caption edits and history survive version-3 portable backups.
+
+The approved private caption runtime uses current native Transformers support for pinned Qwen3-ASR and ForcedAligner models. Recognition processes bounded 30-second chunks and releases its model before spoken-word alignment loads. The first test is at most 30 seconds; longer recognition supports sources up to 30 minutes. Known-speech alignment supports short spoken clips in nine languages. Singing gets rough recognition ranges and manual correction, not certified word alignment. Recognized drafts never overwrite a saved caption edit automatically.
+
+Users can write captions, import SRT/VTT, reuse recorded-script line timing, review recognized words, download separate subtitles or include a selectable MP4 caption track. Browser drafts are protected; export refuses unapplied caption drafts. The actual 20-second mixed sound proof yielded all three spoken lines through the music and rain, with real word timestamps and pauses separating the lines. Its captioned export and subtitle files are kept private.
+
+Validation: 25 focused sound/caption/backup checks passed before the final exact-song-fit case; the final caption suite and interface production build accompany publication. Lip-sync was not installed or qualified; face and singing mouth animation are explicitly unavailable. The approved caption download does not include those separate models. LTX remains deferred.
+
 ## Remaining phases
 
-18: music-video timing, lip-sync and captions. 19: long-form sequences and resumable assembly. 20: conditional LTX and staged updates. These are not claimed as delivered by Phase 17.
+19: long-form sequences and resumable assembly. 20: simplified setup and staged updates. Conditional LTX testing remains skipped at the user's request. These are not claimed as delivered by Phase 18.
