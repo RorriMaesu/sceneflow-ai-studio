@@ -218,7 +218,9 @@ async def execute(job,snapshot):
         capabilities.add('vocal' if snapshot['pack_id']=='music' and not snapshot['inputs'].get('instrumental',True) else 'instrumental' if snapshot['pack_id']=='music' else snapshot['pack_id'])
         seconds=snapshot['inputs'].get('seconds')
         lengths={**(previous or {}).get('body',{}).get('tested_lengths',{})}
-        if seconds:lengths['vocal' if not snapshot['inputs'].get('instrumental',True) else 'instrumental']=seconds
+        if seconds:
+            category='vocal' if not snapshot['inputs'].get('instrumental',True) else 'instrumental'
+            lengths[category]=max(seconds,lengths.get(category,0))
         started=db.one('SELECT started FROM jobs WHERE id=?',(job['id'],))['started']
         body={'fingerprints':fingerprints,'asset_id':assets[0]['id'],'job_id':job['id'],'elapsed_seconds':round(now()-started,1) if started else None,'profile':profile,'adapter_hash':snapshot['adapter_hash'],'capabilities':sorted(capabilities),'tested_lengths':lengths,
               'tested_seconds':min(lengths.values()) if lengths else None, 'note':'Technical sample passed on this PC. Listen to the sample; creative quality and other languages/durations are not certified by decoding.'}

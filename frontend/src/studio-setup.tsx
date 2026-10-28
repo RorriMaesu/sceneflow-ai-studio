@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { request, useConnection } from "./api";
 import "./setup.css";
+import { AppUpdates } from "./app-updates";
 
 const size = (n: number) => n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${Math.ceil(n / 1e6)} MB`;
 const labels: Record<string, string> = { models: "Creation tools", cache: "Temporary files", images: "Pictures", videos: "Video clips", music: "Music", speech: "Speech", effects: "Sound effects", exports: "Finished videos", backups: "Backups" };
@@ -10,13 +11,14 @@ const states: Record<string, string> = { needs_download: "1 · Download files", 
 export function StudioSetup({ act, done }: { act: any; done?: () => void }) {
   const query = useQuery({ queryKey: ["studio-setup"], queryFn: () => request("/api/setup"), refetchInterval: 3000 });
   const [busy, setBusy] = useState(false);
+  const [toolQuote,setToolQuote]=useState<any>();
   const [quote, setQuote] = useState<any>();
   const [runtimeQuote, setRuntimeQuote] = useState<any>();
   const [sample, setSample] = useState("");
   const [updates, setUpdates] = useState<any[]>();
   const [selectedRoot, setSelectedRoot] = useState("");
   const data = query.data;
-  useEffect(() => { if (quote || runtimeQuote) { const review = document.getElementById("download-review"); review?.scrollIntoView({ block: "start" }); review?.focus({ preventScroll: true }); } }, [quote, runtimeQuote]);
+  useEffect(() => { if (quote || runtimeQuote || toolQuote) { const review = document.getElementById("download-review"); review?.scrollIntoView({ block: "start" }); review?.focus({ preventScroll: true }); } }, [quote, runtimeQuote,toolQuote]);
   async function run(action: () => Promise<any>, message = "Setup updated.") {
     if (busy) return;
     setBusy(true);
@@ -77,19 +79,23 @@ export function StudioSetup({ act, done }: { act: any; done?: () => void }) {
           <div><h4>{p.name}</h4><span className="badge">{states[p.state] || p.state}</span></div>
           <p>{p.reason}</p>
           <div className="button-row">
-            {!p.installed && <button className="button" disabled={busy || !hasFolders || ["setup_required", "storage_missing"].includes(p.state)} onClick={() => run(async () => { setRuntimeQuote(undefined);setQuote(await request(`/api/setup/packs/${p.id}/quote`, {})); }, "Download size and folder checked.")}>{p.bytes ? `Review ${size(p.bytes)} download` : "Setup required"}</button>}
-            {p.state === "needs_runtime" && <button className="button primary" disabled={busy || data.runtime_jobs?.some((j:any)=>["queued","installing"].includes(j.status))} onClick={() => run(async () => { setQuote(undefined);setRuntimeQuote(await request(`/api/setup/packs/${p.id}/runtime-quote`, {})); }, "Program setup checked.")}>Finish program setup</button>}
+            {['voices-small','music','effects','captions','alignment'].includes(p.id)&&p.state!=='ready'&&<button className="button primary" disabled={busy||!hasFolders||data.tool_setups?.some((j:any)=>j.pack_id===p.id&&['queued','downloading','programs','testing'].includes(j.status))} onClick={()=>run(async()=>{setQuote(undefined);setRuntimeQuote(undefined);setToolQuote(await request(`/api/setup/tools/${p.id}/quote`,{}));},'Complete setup size and folders checked.')}>Set up {p.name.toLowerCase()}</button>}
+            {!p.installed && !["voices-small","music","effects","captions","alignment"].includes(p.id) && <button className="button" disabled={busy || !hasFolders || ["setup_required", "storage_missing"].includes(p.state)} onClick={() => run(async () => { setRuntimeQuote(undefined);setQuote(await request(`/api/setup/packs/${p.id}/quote`, {})); }, "Download size and folder checked.")}>{p.bytes ? `Review ${size(p.bytes)} download` : "Setup required"}</button>}
+            {p.state === "needs_runtime" && !["voices-small","music","effects","captions","alignment"].includes(p.id) && <button className="button primary" disabled={busy || data.runtime_jobs?.some((j:any)=>["queued","installing"].includes(j.status))} onClick={() => run(async () => { setQuote(undefined);setRuntimeQuote(await request(`/api/setup/packs/${p.id}/runtime-quote`, {})); }, "Program setup checked.")}>Finish program setup</button>}
             {["needs_test","ready"].includes(p.state) && ["voices-small","music","effects"].includes(p.id) && <button className="button" disabled={busy} onClick={() => run(() => request(`/api/setup/packs/${p.id}/sample`, {}), "Sample queued. You can keep using your studio while it runs.")}>{p.state === "ready" ? "Run another sample" : "Run a short sample"}</button>}
             {p.state === "ready" && ['music','effects'].includes(p.id) && <button className="button" disabled={busy} onClick={()=>run(()=>request(`/api/setup/packs/${p.id}/sample`,{seconds:p.id==='music'?180:10}),"Longer sample queued. Current limits stay in place until it passes.")}>Test {p.id==='music'?'180':'10'}-second cues</button>}
             {p.state === 'ready' && p.id === 'music' && <button className="button" disabled={busy} onClick={()=>run(()=>request('/api/setup/packs/music/sample',{vocal:true,seconds:180}),"Singing sample queued. Listen to the result before using vocals.")}>Test a 3-minute song</button>}
             {data.samples?.[p.id]?.asset_id && <button className="button" onClick={()=>run(async()=>{const v=await request(`/api/assets/${data.samples[p.id].asset_id}/ticket`,{});setSample(useConnection.getState().url+v.url);},"Sample ready to listen.")}>Listen to sample</button>}
             {data.samples?.[p.id]?.elapsed_seconds && <p>Last sample took about {Math.max(1,Math.ceil(data.samples[p.id].elapsed_seconds/60))} minute(s), including loading the tool.</p>}
-            <details><summary>Tool details</summary><p>{p.repo} · {p.license}</p><p>Version: {p.revision.slice(0, 12)}</p><a href={p.source} target="_blank" rel="noreferrer">Official source</a></details>
+            {p.id==='music'&&data.samples?.music?.tested_lengths&&<p>Tested lengths: instrumental {data.samples.music.tested_lengths.instrumental||0} s · singing {data.samples.music.tested_lengths.vocal||0} s.</p>}
+            <details><summary>Tool details & repair</summary>{['voices-small','music','effects','captions','alignment'].includes(p.id)&&<button className="button" disabled={busy||!hasFolders} onClick={()=>run(async()=>{setQuote(undefined);setRuntimeQuote(undefined);setToolQuote(await request(`/api/setup/tools/${p.id}/quote`,{}));},'Repair checked. Verified existing files will be reused.')}>Review repair setup</button>}<p>{p.repo} · {p.license}</p><p>Version: {p.revision.slice(0, 12)}</p><a href={p.source} target="_blank" rel="noreferrer">Official source</a></details>
           </div>
         </article>)}
       </div>
       {!hasFolders && <p>Choose your folders above before reviewing a download.</p>}
     </details>
+    {toolQuote&&<section className="panel settings-panel" id="download-review" tabIndex={-1} aria-label="Review complete tool setup"><h3>Install this tool and check it works</h3><p>Up to <strong>{size(toolQuote.download_bytes_upper)}</strong> to download, including model and private program files. Verified cached files can reduce this.</p>{toolQuote.models.map((m:any)=><p key={m.pack_id}>Save model files to: {m.destination}<br/>License: {m.license} · <a href={m.source} target="_blank" rel="noreferrer">Official terms</a></p>)}{toolQuote.program&&<p>Private program folder: {toolQuote.program.destination}</p>}{Object.entries(toolQuote.working_bytes_by_volume).map(([volume,bytes])=><p key={volume}>{volume}: allow {size(Number(bytes))} of working space, plus the storage reserve.</p>)}<p>{toolQuote.note}</p><div className="button-row"><button className="button primary" disabled={busy} onClick={()=>run(async()=>{await request('/api/setup/tools',{quote_id:toolQuote.id,confirm:true});setToolQuote(undefined);},'Setup started. SceneFlow will download, verify, install and create the sample in order.')}>{toolQuote.automatic_sample?'Install and test':'Install caption tools'}</button><button className="button" disabled={busy} onClick={()=>setToolQuote(undefined)}>Not now</button></div></section>}
+    {data.tool_setups?.filter((t:any)=>t.status!=='ready').map((t:any)=><section className="panel settings-panel" key={t.id}><h3>{data.packs.find((p:any)=>p.id===t.pack_id)?.name||'Tool'} setup</h3><p role="status">{t.step}</p>{t.error&&<p role="alert">{t.error}</p>}{['paused','failed'].includes(t.status)&&<button className="button" disabled={busy} onClick={()=>run(()=>request(`/api/setup/tools/${t.id}/continue`,{}),'Setup continued from saved files.')}>Continue setup</button>}{['queued','downloading','programs','testing'].includes(t.status)&&<button className="button" disabled={busy} onClick={()=>run(()=>request(`/api/setup/tools/${t.id}/pause`,{}),'Setup will pause after its current step.')}>Pause setup</button>}</section>)}
     {sample && <div className="panel"><p>Listen before using this tool in your story.</p><audio src={sample} controls /></div>}
     {runtimeQuote && <section className="panel settings-panel" id="download-review" tabIndex={-1} aria-label="Review program setup"><h3>Finish this tool’s program setup</h3><p>Up to <strong>{size(runtimeQuote.download_bytes_upper)}</strong> to download. Allow 12 GB of free working space for this step. Shared files can reduce the download.</p><p>Save to: {runtimeQuote.destination}</p><p>{runtimeQuote.note}</p><div className="button-row"><button className="button primary" disabled={busy} onClick={()=>run(async()=>{const r=await request('/api/setup/runtimes',{quote_id:runtimeQuote.id,confirm:true});setRuntimeQuote(undefined);return r;},"Program setup queued.")}>Set up this tool</button><button className="button" disabled={busy} onClick={()=>setRuntimeQuote(undefined)}>Not now</button></div></section>}
     {data.runtime_jobs?.filter((j:any)=>j.status!=="completed").map((j:any)=><section className="panel settings-panel" key={j.id}><h3>{j.runtime_id === "speech" ? "Voices" : j.runtime_id === "music" ? "Music" : j.runtime_id === "captions" ? "Captions" : "Sound effects"} program setup</h3><p role="status">{j.step}</p>{j.error && <p role="alert">{j.error}</p>}{j.status === "failed" && <p>Choose “Finish program setup” above to retry using the saved download cache.</p>}</section>)}
@@ -108,7 +114,8 @@ export function StudioSetup({ act, done }: { act: any; done?: () => void }) {
       {d.error && <p role="status">{d.error}</p>}
       <button className="button" disabled={busy} onClick={() => run(() => request(`/api/setup/downloads/${d.id}/${["paused", "failed"].includes(d.status) ? "resume" : "pause"}`, {}), "Download updated.")}>{["paused", "failed"].includes(d.status) ? "Resume download" : "Pause download"}</button>
     </article>)}</section>}
-    <details className="panel settings-panel"><summary>Updates</summary>
+    <AppUpdates act={act}/>
+    <details className="panel settings-panel"><summary>Creation model updates</summary>
       <p>Check for newer tools without replacing the versions used by your existing work.</p>
       <button className="button" disabled={busy} onClick={() => run(async () => setUpdates(await request("/api/setup/updates/check", {})), "Update check complete. Your tools were not changed.")}>Check for updates</button>
       {updates && updates.map((u: any) => <p key={u.pack_id}>{data.packs.find((p: any) => p.id === u.pack_id)?.name}: {u.error || (u.update_available ? "New version found — compatibility testing required before use." : "Catalog version is current.")}</p>)}

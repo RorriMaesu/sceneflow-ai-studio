@@ -71,6 +71,9 @@ async def execute(job,snapshot):
         try:
             result=await structured(client,snapshot['model'],[{'role':'system','content':'Draft short spoken dialogue or narration for the selected sequence. Use the shared story guide and existing characters. Return exactly count lines, each up to 600 characters. Append after existing_lines. Reuse existing character names exactly; propose only needed new characters with available preset voices. Empty speaker means narrator. Do not include stage directions inside spoken text. This draft does not generate audio or change any script.'},{'role':'user','content':encode({k:snapshot[k] for k in ['context','cast','existing_lines','instruction','count']})}],Script,{'num_predict':6000})
             names={c['name'].casefold() for c in snapshot['cast']}
+            # Some planners repeat the supplied cast in this list. Reuse those
+            # characters and their saved voices rather than adding duplicates.
+            result.characters=[c for c in result.characters if c.name.casefold() not in names]
             added=[c.name.casefold() for c in result.characters]
             if len(set(added))!=len(added) or any(n in names for n in added):raise ValueError('The draft duplicated an existing character. No script was changed; try again.')
             names.update(added)

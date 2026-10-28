@@ -17,3 +17,5 @@ library/
 tools/
 !config/example.json
 models/
+
+/SceneFlowSetup.exe

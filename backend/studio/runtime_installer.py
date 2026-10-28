@@ -61,6 +61,7 @@ def quote(identifier, root_id=None):
     value = manifest(identifier)
     destination = prefix(identifier, root_id)
     storage.require_space(destination, 12 * 1024 ** 3)
+    storage.require_space(storage.role_folder('cache'),value['requirements']['download_bytes']+1024**3)
     return {'runtime_id': identifier, 'root_id': root_id, 'manifest_hash': value['hash'],
             'download_bytes_upper': value['requirements']['download_bytes'] + (value['source'].get('archive_bytes', 0) if isinstance(value['source'], dict) else 0) + 120 * 1024 ** 2,
             'destination': str(destination), 'python': value['python'],

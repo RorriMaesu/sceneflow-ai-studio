@@ -22,6 +22,11 @@ def telemetry():
 def managed(connected, monkeypatch):
     _, _, db = connected
     rb.migrate()
+    # Exercise the real OS mutex under a unique test name so running the test
+    # suite cannot contend with a user's actual model job.
+    actual_lock=rb.DeviceLock
+    namespace='Local\\SceneFlow-test-'+uid()
+    monkeypatch.setattr(rb,'DeviceLock',lambda:actual_lock(namespace))
     monkeypatch.setattr(rb, 'resources', telemetry)
     async def idle(self, job): return None
     monkeypatch.setattr(rb.ResourceBroker, 'prepare_backend', idle)
@@ -35,10 +40,11 @@ def managed(connected, monkeypatch):
 
 
 def test_named_device_lock_excludes_another_process():
-    lock = rb.DeviceLock()
+    namespace='Local\\SceneFlow-test-'+uid()
+    lock = rb.DeviceLock(namespace)
     assert lock.acquire()
     try:
-        code = 'from studio.resource_broker import DeviceLock; value=DeviceLock(); print(value.acquire()); value.release()'
+        code = 'from studio.resource_broker import DeviceLock; value=DeviceLock('+repr(namespace)+'); print(value.acquire()); value.release()'
         output = subprocess.check_output([sys.executable, '-c', code], text=True, env=os.environ.copy(), timeout=20)
         assert output.strip() == 'False'
     finally:

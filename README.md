@@ -2,7 +2,7 @@
 
 A local filmmaking studio for planning scenes, generating starting stills, animating their exact images, reviewing takes and assembling a movie. The public React interface connects to an authenticated Windows agent on your computer.
 
-**Release 0.19 — resumable editing and complete-production assembly.** Render verified sections once, resume after interruptions and rebuild affected sections after an edit. Combine current sequence exports into an episode or film. A reviewable dialogue helper can append script drafts using shared characters and continuity. Song timing, local captions, speech, music and effects remain available. [Full studio release ledger](docs/FULL_SUITE_RELEASES.md). LTX, face lip-sync and singing mouth animation remain unavailable.
+**Release 0.20 — easier Windows setup and reviewed updates.** Download the Windows app ZIP, unpack it on a drive with space, then open START_STUDIO. The private setup adds the Studio program and media tools without requiring a separate Python or Node installation. Inside Studio, one reviewed setup downloads a chosen tool, installs its private program and runs a sample. Application updates stage verified files and retain a rollback; model updates remain separate. [Full studio release ledger](docs/FULL_SUITE_RELEASES.md). LTX, face lip-sync, singing mouth animation and voice cloning remain unavailable.
 
 - [Published interface](https://rorrimaesu.github.io/sceneflow-ai-studio/)
 - [Verification ledger](docs/EVIDENCE.md)
@@ -22,13 +22,17 @@ Open `M:\AI-Video-Studio\START_STUDIO.bat`. It starts available local services, 
 
 The Pages interface uses the same local data. Enter the launcher's code, or create one under **Settings → Create code for another browser**. Codes expire after ten minutes and are consumed once. Paired sessions last seven days and can be revoked in Settings.
 
-## Install another checkout
+## Install on another Windows PC
 
-1. Put the source on a drive with sufficient space, such as `M:\AI-Video-Studio`.
-2. Install Python 3.11 and Node.js 24. Run `SETUP_STUDIO.bat` to create the isolated environment, install pinned dependencies and build the interface.
-3. Keep the existing ComfyUI installation and models. Default services are `http://127.0.0.1:8188` and local Ollama at `http://127.0.0.1:11434`.
-4. Put portable `ffmpeg.exe` and `ffprobe.exe` under `tools/ffmpeg/`. This machine has the verified FFmpeg 9.0.2 essentials bundle from the Windows builds linked by [FFmpeg](https://ffmpeg.org/download.html). Tools and model weights are not bundled in Git.
-5. Run `START_STUDIO.bat`, pair the browser, refresh discovery in Model Library and choose installed models independently.
+1. Download **SceneFlow Windows app** from [Releases](https://github.com/RorriMaesu/sceneflow-ai-studio/releases/latest).
+2. Unpack it into a dedicated folder on a drive with room. Avoid unpacking it inside another ComfyUI installation.
+3. Open **START_STUDIO.bat** and review the private program setup. Initial setup allows up to 400 MB of downloads and needs 3 GB free. Models are optional and reviewed separately inside the app.
+4. In **Setup & downloads**, choose recommended folders or your own folders, then install only the voices, music, effects or caption tools you want. Studio downloads, verifies, installs private program files and queues a sample in order. Large model setups show their own total and working-space review.
+5. Keep your existing ComfyUI and local Ollama installations for visuals and story assistance. Connect them in Settings. SceneFlow does not install or alter GPU drivers or ComfyUI's Python.
+
+A developer source checkout still requires building `frontend` with Node before packaging. The Windows app ZIP includes the built interface, Windows setup source/helper and hash-verified backend package list. Studio's private Python and packages live in its own folder; no global Python or Node installation is required for that ZIP. Startup logs are local under `logs/`.
+
+**Updates:** Setup separates application updates from creation-model metadata. Check → prepare verified package → update and reopen while idle. Program dependency changes require a separately reviewed setup. An interrupted or failed application update restores application files before opening. Current projects, models, recordings and pairing remain local; the update backup also retains a database snapshot for advanced recovery.
 
 The launcher uses process-local settings. Defaults recognize `M:\ComfyUI\run_nvidia_gpu.bat` and `M:\AiStudio\OllamaModels`. Other installations can set `comfy_launcher`, `ollama_models`, `auto_start_comfy` and `auto_start_ollama` in private `config/settings.json`. Existing services are reused. Setup preserves ComfyUI's Python, packages and models.
 

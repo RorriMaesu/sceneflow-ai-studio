@@ -61,18 +61,8 @@ def grant(path):
 def choose_folder():
     if os.name != 'nt':
         raise ValueError('The local folder picker is available in the Windows app. Recommended folders still work.')
-    try:
-        import tkinter
-        from tkinter import filedialog
-        window = tkinter.Tk()
-        window.withdraw()
-        window.attributes('-topmost', True)
-        try:
-            value = filedialog.askdirectory(parent=window, title='Choose a SceneFlow library folder', mustexist=True)
-        finally:
-            window.destroy()
-    except Exception as error:
-        raise ValueError('The Windows folder picker could not open. Use recommended folders, or run the local setup tool.') from error
+    from .windows_folders import pick_folder
+    value=pick_folder()
     return grant(value) if value else None
 
 

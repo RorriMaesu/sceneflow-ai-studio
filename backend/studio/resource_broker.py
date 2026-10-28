@@ -27,8 +27,9 @@ def migrate():
 
 class DeviceLock:
     """A named mutex survives Python exceptions and coordinates separate installations."""
-    def __init__(self):
+    def __init__(self,name=None):
         self.handle = None
+        self.name=name or 'Global\\SceneFlowGPU0'
 
     def acquire(self):
         if self.handle is not None:
@@ -40,7 +41,7 @@ class DeviceLock:
             kernel.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
             kernel.WaitForSingleObject.restype = ctypes.c_ulong
             kernel.CloseHandle.argtypes = [ctypes.c_void_p]
-            handle = kernel.CreateMutexW(None, False, 'Global\\SceneFlowGPU0')
+            handle = kernel.CreateMutexW(None, False, self.name)
             if not handle:
                 return False
             result = kernel.WaitForSingleObject(handle, 0)
@@ -51,7 +52,9 @@ class DeviceLock:
         else:
             import fcntl
             from pathlib import Path
-            handle = (Path('/tmp') / ('sceneflow-gpu0-' + str(os.getuid()) + '.lock')).open('a+')
+            import hashlib
+            suffix='' if self.name=='Global\\SceneFlowGPU0' else '-'+hashlib.sha256(self.name.encode()).hexdigest()[:20]
+            handle = (Path('/tmp') / ('sceneflow-gpu0-' + str(os.getuid()) + suffix+'.lock')).open('a+')
             try:
                 fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:

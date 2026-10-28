@@ -134,7 +134,8 @@
           "bytes": 2776833,
           "git_blob_sha1": "4783fe10ac3adce15ac8f358ef5462739852c569"
         }
-      ]
+      ],
+      "blocked": "Character voice cloning needs a separate reference-recording setup and qualification. Use the installed preset voices for now."
     },
     {
       "id": "music",

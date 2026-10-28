@@ -1,2 +1,4 @@
 backend/runtime-locks/*.txt text eol=lf
 backend/runtime-locks/*.in text eol=lf
+
+backend/bootstrap-lock.txt text eol=lf

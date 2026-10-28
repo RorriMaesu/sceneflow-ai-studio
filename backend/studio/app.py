@@ -25,12 +25,15 @@ async def lifespan(app):
     from .production import dispatcher
     from .model_library import manager as downloads
     from .runtime_installer import manager as runtimes
+    from .tool_setup import manager as tools
     await downloads.start()
     await runtimes.start()
     await dispatcher.start()
+    await tools.start()
     try:
         yield
     finally:
+        await tools.stop()
         await dispatcher.stop()
         await runtimes.stop()
         await downloads.stop()
@@ -351,3 +354,9 @@ app.include_router(master_router)
 
 from .script_planning import router as script_router
 app.include_router(script_router)
+
+from .tool_setup import router as setup_tools_router
+app.include_router(setup_tools_router)
+
+from .app_updates import router as app_updates_router
+app.include_router(app_updates_router)

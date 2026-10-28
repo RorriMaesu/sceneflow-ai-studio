@@ -35,11 +35,12 @@ async def readiness(session=Depends(require_session)):
     from .resource_broker import status as memory_status
     from .runtime_installer import jobs as runtime_jobs
     from .audio_engine import qualification
+    from .tool_setup import transactions
     folders = storage.status()
     local = await services(True)
     return {'version': VERSION, 'storage': folders, 'resources': resources(), 'services': local, 'memory_manager': memory_status(),
             'packs': model_library.list_packs(), 'downloads': model_library.downloads(),
-            'runtime_jobs': runtime_jobs(), 'samples': {p: (qualification(p) or {}).get('body') for p in ['voices-small','music','effects']},
+            'runtime_jobs': runtime_jobs(), 'tool_setups':transactions(), 'samples': {p: (qualification(p) or {}).get('body') for p in ['voices-small','music','effects']},
             'setup_complete': bool(settings.get('setup_complete')),
             'can_use_existing_tools': local['comfy']['connected'],
             'next_action': 'Choose where your files go.' if not folders['routes'] else 'Choose only the tools your production needs.'}

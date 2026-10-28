@@ -22,6 +22,9 @@ export function TimelineEditor({
   );
   const { value, setValue, dirty } = draft;
   const revision = draft.revision;
+  const [clipPage,setClipPage]=useState(0),[audioPage,setAudioPage]=useState(0);
+  useEffect(()=>setClipPage(p=>Math.min(p,Math.max(0,Math.ceil(value.clips.length/25)-1))),[value.clips.length]);
+  useEffect(()=>setAudioPage(p=>Math.min(p,Math.max(0,Math.ceil(value.audio.length/25)-1))),[value.audio.length]);
   const [zoom, setZoom] = useState(1);
   const [past, setPast] = useState<any[]>([]);
   const [future, setFuture] = useState<any[]>([]);
@@ -170,7 +173,9 @@ export function TimelineEditor({
         />
       </label>
       <div className="edit-strip">
-        {value.clips.map((c: any, index: number) => {
+        {value.clips.length>25&&<div className="button-row"><button className="button" disabled={clipPage===0} onClick={()=>setClipPage(p=>p-1)}>Previous clips</button><span>Clips {clipPage*25+1}–{Math.min((clipPage+1)*25,value.clips.length)} of {value.clips.length}</span><button className="button" disabled={(clipPage+1)*25>=value.clips.length} onClick={()=>setClipPage(p=>p+1)}>Next clips</button></div>}
+        {value.clips.slice(clipPage*25,clipPage*25+25).map((c: any, localIndex: number) => {
+          const index=clipPage*25+localIndex;
           const scene = project.scenes.find((s) => s.id === c.scene_id);
           const asset = scene?.assets.find((a) => a.id === c.asset_id);
           return (
@@ -473,7 +478,8 @@ export function TimelineEditor({
               </button>
             ))}
         </div>
-        {value.audio.map((t: any, i: number) => (
+        {value.audio.length>25&&<div className="button-row"><button className="button" disabled={audioPage===0} onClick={()=>setAudioPage(p=>p-1)}>Previous sound tracks</button><span>Sound tracks {audioPage*25+1}–{Math.min((audioPage+1)*25,value.audio.length)} of {value.audio.length}</span><button className="button" disabled={(audioPage+1)*25>=value.audio.length} onClick={()=>setAudioPage(p=>p+1)}>Next sound tracks</button></div>}
+        {value.audio.slice(audioPage*25,audioPage*25+25).map((t: any, localIndex: number) => {const i=audioPage*25+localIndex;return (
           <article className="audio-edit" key={t.id}>
             <AudioWaveform assetId={t.asset_id} />
             <div className="settings-grid">
@@ -538,7 +544,7 @@ export function TimelineEditor({
               Remove track
             </button>
           </article>
-        ))}
+        );})}
       </details>
       <details>
         <summary>Export picture, transitions & loop</summary>

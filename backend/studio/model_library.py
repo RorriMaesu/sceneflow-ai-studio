@@ -110,7 +110,16 @@ def quote_install(identifier, session, root_id=None):
         raise ValueError('This pack is missing verification information. Check for a qualified Studio update.')
     destination = install_path(value, root_id)
     # Existing bytes count as reusable only after verification, not just a size match.
-    missing = [f for f in value['files'] if not matches(file_path(value, root_id, f), f)]
+    installed=db.one('SELECT body FROM model_installs WHERE pack_id=? AND revision=? AND root_id=?',(identifier,value['revision'],root_id))
+    trusted=json.loads(installed['body']) if installed else {}
+    stamps=trusted.get('fingerprints',{}) if trusted.get('manifest_hash')==manifest_hash(value) else {}
+    def reusable(item):
+        path=file_path(value,root_id,item)
+        if path.is_file():
+            info=path.stat()
+            if stamps.get(item['path'])==[info.st_size,info.st_mtime_ns]:return True
+        return matches(path,item)
+    missing = [f for f in value['files'] if not reusable(f)]
     body = {'pack_id': identifier, 'revision': value['revision'], 'root_id': root_id,
             'manifest_hash': manifest_hash(value), 'download_bytes': sum(f['bytes'] for f in missing),
             'pack_bytes': sum(f['bytes'] for f in value['files']), 'files': value['files'],
